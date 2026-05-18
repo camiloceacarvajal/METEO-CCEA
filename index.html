@@ -1,0 +1,2381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MeteoPlomo V5.1 PRO · Ruta Real Valle Nevado</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            background: #0f172a;
+            background-image:
+                radial-gradient(at 0% 0%, rgba(15, 23, 42, 1) 0, transparent 50%),
+                radial-gradient(at 50% 0%, rgba(30, 41, 59, 1) 0, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(15, 23, 42, 1) 0, transparent 50%);
+            color: #f8fafc;
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-attachment: fixed;
+        }
+
+        .glass {
+            background: rgba(30, 41, 59, 0.64);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .glass-hover {
+            transition: all 0.3s ease;
+        }
+
+        .glass-hover:hover {
+            background: rgba(51, 65, 85, 0.84);
+            border-color: rgba(56, 189, 248, 0.45);
+            transform: translateY(-2px);
+        }
+
+        .node-active {
+            box-shadow: 0 0 22px rgba(56, 189, 248, 0.55);
+            border-color: #38bdf8 !important;
+        }
+
+        .route-line {
+            position: absolute;
+            left: 16px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to top, #38bdf8, #818cf8, #c084fc, #e879f9);
+            z-index: 0;
+        }
+
+        #map {
+            width: 100%;
+            height: 430px;
+            min-height: 430px;
+            border-radius: 1rem;
+            overflow: hidden;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: #0f172a;
+            z-index: 10;
+        }
+
+        .leaflet-container {
+            width: 100%;
+            height: 100%;
+            background: #0f172a;
+        }
+
+        .leaflet-popup-content-wrapper,
+        .leaflet-popup-tip {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(4px);
+            color: #f8fafc;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        }
+
+        .alt-profile { width: 100%; height: 240px; }
+        .mini-chart { width: 100%; height: 260px; }
+        .small-chart { width: 100%; height: 180px; }
+
+        .risk-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 9999px;
+            display: inline-block;
+        }
+
+        .print-only { display: none; }
+
+        @media print {
+            body { background: white !important; color: black !important; }
+            header, button, #map, .no-print, #toast-container { display: none !important; }
+            .glass { background: white !important; color: black !important; border: 1px solid #999 !important; box-shadow: none !important; }
+            .print-only { display: block !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+        ::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.8); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 1); }
+    </style>
+</head>
+
+<body class="antialiased pb-12">
+
+<!-- Toast Notification Container -->
+<div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2"></div>
+
+<header class="border-b border-slate-800 bg-slate-900/85 sticky top-0 z-50 backdrop-blur-md shadow-lg shadow-black/20">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col xl:flex-row justify-between items-center gap-3">
+        <div class="flex items-center space-x-3 w-full xl:w-auto justify-center xl:justify-start">
+            <div class="p-2 bg-indigo-500/20 rounded-xl border border-indigo-500/30">
+                <i data-lucide="mountain" class="text-indigo-400 w-7 h-7"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-wide flex items-center">
+                    Meteo<span class="text-indigo-400">Plomo</span> V5.1 PRO
+                </h1>
+                <p class="text-[11px] text-slate-400 font-medium">
+                    Ruta Real · Ataque Automático · Actualizado: <span id="last-update-time" class="text-slate-300">--:--</span>
+                </p>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-center gap-2 w-full xl:w-auto">
+            <div id="track-status" class="text-xs font-medium text-slate-300 bg-slate-800/80 border border-slate-700 px-3 py-2 rounded-lg backdrop-blur">
+                Track: cargando...
+            </div>
+
+            <div id="model-status" class="text-xs font-medium text-slate-300 bg-slate-800/80 border border-slate-700 px-3 py-2 rounded-lg backdrop-blur">
+                Modelos: --
+            </div>
+
+            <div id="global-risk-badge" class="text-xs font-bold bg-slate-800/80 border border-slate-700 px-3 py-2 rounded-lg backdrop-blur transition-colors">
+                Riesgo ruta: --
+            </div>
+
+            <button onclick="loadExpeditionData()" class="flex items-center text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:shadow-[0_0_20px_rgba(79,70,229,0.5)] border border-indigo-500 px-4 py-2 rounded-lg transition-all duration-200">
+                <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4 mr-2"></i>
+                Actualizar
+            </button>
+
+            <button onclick="centerFullRoute()" class="flex items-center text-sm font-medium bg-sky-500/20 hover:bg-sky-500/40 border border-sky-500/50 text-sky-100 px-4 py-2 rounded-lg transition-colors">
+                <i data-lucide="map-pinned" class="w-4 h-4 mr-2"></i>
+                Centrar mapa
+            </button>
+
+            <button onclick="exportAttackReport()" class="flex items-center text-sm font-medium bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/50 text-emerald-100 px-4 py-2 rounded-lg transition-colors">
+                <i data-lucide="printer" class="w-4 h-4 mr-2"></i>
+                Exportar PDF
+            </button>
+        </div>
+    </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 mt-8">
+
+    <div id="loader" class="flex flex-col items-center justify-center py-32 space-y-6">
+        <div class="relative">
+            <div class="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20 animate-pulse"></div>
+            <i data-lucide="loader-2" class="w-14 h-14 text-indigo-400 animate-spin relative z-10"></i>
+        </div>
+        <p class="text-slate-300 font-medium animate-pulse text-center max-w-md">
+            Sincronizando ruta real, enjambre de modelos, niveles de presión y detectando ventana de cumbre...
+        </p>
+    </div>
+
+    <div id="dashboard" class="hidden space-y-8 animate-[fadeIn_0.5s_ease-out]">
+
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-8">
+
+            <!-- Sidebar (Left) -->
+            <div class="xl:col-span-4 space-y-6">
+
+                <div class="glass rounded-2xl p-6">
+                    <h2 class="text-lg font-bold mb-6 flex items-center text-slate-100">
+                        <i data-lucide="route" class="w-5 h-5 mr-2 text-sky-400"></i>
+                        Perfil de Ruta Actual
+                    </h2>
+                    <div class="relative pl-6 sm:pl-0">
+                        <div class="route-line hidden sm:block"></div>
+                        <div id="route-nodes" class="space-y-4 relative z-10 sm:ml-8"></div>
+                    </div>
+                </div>
+
+                <div class="glass rounded-2xl p-6">
+                    <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100">
+                        <i data-lucide="activity" class="w-5 h-5 mr-2 text-emerald-400"></i>
+                        Perfil Altitudinal + Riesgo
+                    </h2>
+                    <svg id="alt-profile" class="alt-profile bg-slate-900/30 rounded-lg border border-slate-700/50" viewBox="0 0 700 240" preserveAspectRatio="none"></svg>
+                    <div class="mt-3 text-[11px] text-slate-400 font-medium">
+                        Perfil interactivo por nodos meteorológicos. Haz clic en los nodos para ver detalles.
+                    </div>
+                </div>
+
+                <div class="glass rounded-2xl p-6">
+                    <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100">
+                        <i data-lucide="bar-chart-3" class="w-5 h-5 mr-2 text-cyan-400"></i>
+                        Incertidumbre Multi-modelo
+                    </h2>
+                    <div id="uncertainty-panel" class="space-y-3 text-sm"></div>
+                </div>
+
+            </div>
+
+            <!-- Main Content (Right) -->
+            <div class="xl:col-span-8 space-y-6">
+
+                <!-- Attack Window Banner -->
+                <div id="attack-window-panel" class="glass rounded-2xl p-6 border border-emerald-500/30 bg-gradient-to-r from-slate-900/80 to-emerald-900/20">
+                    <div class="flex items-center justify-between gap-3 mb-4 border-b border-slate-700/50 pb-3">
+                        <h2 class="text-lg font-bold flex items-center text-slate-100">
+                            <i data-lucide="target" class="w-5 h-5 mr-2 text-emerald-400"></i>
+                            Ataque Automático V5.1
+                        </h2>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 bg-slate-800 px-2 py-1 rounded">Cálculo de Ventana</span>
+                    </div>
+                    <div id="attack-window-result" class="text-sm text-slate-300">
+                        Calculando mejor ventana...
+                    </div>
+                </div>
+
+                <!-- Detailed Data Card -->
+                <div class="glass rounded-2xl p-6 relative overflow-hidden">
+                    <div class="absolute right-0 top-0 opacity-[0.03] pointer-events-none transform translate-x-10 -translate-y-10">
+                        <i data-lucide="mountain" class="w-96 h-96"></i>
+                    </div>
+
+                    <div class="flex flex-wrap justify-between items-start mb-6 border-b border-slate-700/50 pb-6 relative z-10">
+                        <div>
+                            <h3 id="detail-name" class="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Cargando...</h3>
+                            <div class="flex items-center mt-2">
+                                <i data-lucide="arrow-up-circle" class="w-4 h-4 text-indigo-400 mr-1.5"></i>
+                                <p id="detail-alt" class="text-indigo-300 font-semibold text-lg">---- msnm</p>
+                            </div>
+                            <p id="detail-risk-summary" class="text-xs text-slate-400 mt-2 bg-slate-800/80 inline-block px-2 py-1 rounded border border-slate-700">Riesgo alpino: --</p>
+                        </div>
+
+                        <div class="text-right mt-4 sm:mt-0 bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                            <p class="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">Condición Actual</p>
+                            <div class="flex items-center text-2xl font-bold justify-end text-white">
+                                <span id="detail-desc" class="mr-3">--</span>
+                                <div id="detail-icon" class="p-1.5 bg-slate-700/50 rounded-lg border border-slate-600/50"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 relative z-10">
+                        <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 shadow-inner">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Temp / Sensación</p>
+                            <p class="text-3xl font-bold text-white"><span id="detail-temp">--</span>°</p>
+                            <p class="text-xs font-medium text-red-300 mt-1 flex items-center"><i data-lucide="thermometer" class="w-3 h-3 mr-1"></i>St: <span id="detail-feels" class="ml-1">--</span>°C</p>
+                        </div>
+
+                        <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 shadow-inner">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center justify-between">
+                                <span>Viento Fijo</span>
+                                <i data-lucide="navigation" id="wind-dir-icon" class="w-3.5 h-3.5 text-sky-400 transition-transform duration-500"></i>
+                            </p>
+                            <p class="text-3xl font-bold text-white"><span id="detail-wind">--</span></p>
+                            <p class="text-xs font-medium text-slate-400 mt-1">km/h (orográfico)</p>
+                        </div>
+
+                        <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 shadow-inner">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-orange-300/80 mb-1">Ráfaga Máxima</p>
+                            <p class="text-3xl font-bold text-orange-400 drop-shadow-sm"><span id="detail-gusts">--</span></p>
+                            <p class="text-xs font-medium text-slate-400 mt-1">km/h</p>
+                        </div>
+
+                        <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 shadow-inner">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-purple-300/80 mb-1">Índice UV</p>
+                            <p class="text-3xl font-bold text-purple-400"><span id="detail-uv">--</span></p>
+                            <p class="text-xs font-medium text-slate-400 mt-1">Actual / Horario</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 relative z-10">
+                        <div class="bg-gradient-to-br from-indigo-900/40 to-slate-900/40 border border-indigo-500/30 p-4 rounded-xl">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-300 mb-1 flex items-center"><i data-lucide="thermometer-snowflake" class="w-3.5 h-3.5 mr-1.5 text-indigo-400"></i> Isoterma Cero</p>
+                            <div class="text-2xl font-black text-indigo-300 mt-1"><span id="global-isotherm">--</span><span class="text-sm font-medium ml-1">m</span></div>
+                        </div>
+
+                        <div id="cape-container" class="bg-slate-800/40 border border-slate-700 p-4 rounded-xl">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-300 mb-1 flex items-center"><i data-lucide="zap" class="w-3.5 h-3.5 mr-1.5 text-yellow-400"></i> Tormenta</p>
+                            <p class="text-xs font-medium text-slate-400 mt-1" id="cape-text">CAPE: -- J/kg</p>
+                            <div class="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider inline-block mt-1.5" id="cape-badge">--</div>
+                        </div>
+
+                        <div class="bg-slate-800/40 border border-slate-700 p-4 rounded-xl">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-300 mb-1 flex items-center"><i data-lucide="droplets" class="w-3.5 h-3.5 mr-1.5 text-cyan-400"></i> RH / Pto. Rocío</p>
+                            <div class="text-xl font-bold text-cyan-300 mt-1"><span id="detail-rh">--</span>%</div>
+                            <p class="text-xs font-medium text-slate-400 mt-0.5">Td: <span id="detail-dew">--</span>°C</p>
+                        </div>
+
+                        <div id="ml-container" class="bg-gradient-to-br from-pink-900/30 to-slate-900/40 border border-pink-500/30 p-4 rounded-xl">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-300 mb-1 flex items-center" title="Machine Learning Prediction"><i data-lucide="brain-circuit" class="w-3.5 h-3.5 mr-1.5 text-pink-400"></i> Turnaround ML</p>
+                            <div class="text-2xl font-black text-pink-300 mt-1"><span id="ml-prob">--</span>%</div>
+                            <p class="text-[10px] text-slate-400 mt-0.5 leading-tight">Prob. Abortar</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Map & Interactive Windows -->
+                <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="glass rounded-2xl p-6 flex flex-col">
+                        <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100">
+                            <i data-lucide="map" class="w-5 h-5 mr-2 text-emerald-400"></i>
+                            Mapa de Ruta Real
+                        </h2>
+                        <div id="map" class="flex-grow min-h-[350px]"></div>
+                        <div class="text-[11px] font-medium text-slate-400 mt-3 flex items-center bg-slate-800/50 p-2 rounded border border-slate-700/50">
+                            <i data-lucide="info" class="w-3.5 h-3.5 mr-1.5 text-sky-400 flex-shrink-0"></i>
+                            <span>Azul: Track real GPS. Puntos: Nodos climáticos.</span>
+                        </div>
+                    </div>
+
+                    <div class="glass rounded-2xl p-6 flex flex-col">
+                        <div class="flex justify-between items-center mb-5 border-b border-slate-700/50 pb-3">
+                            <h2 class="text-lg font-bold flex items-center text-slate-100">
+                                <i data-lucide="clock" class="w-5 h-5 mr-2 text-amber-400"></i>
+                                Ventana Cumbre (Hora a Hora)
+                            </h2>
+                        </div>
+                        <div id="summit-window" class="space-y-2.5 overflow-y-auto flex-grow custom-scrollbar pr-2" style="max-height: 380px;"></div>
+                    </div>
+                </section>
+
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="glass rounded-2xl p-6">
+            <div class="flex flex-col lg:flex-row justify-between lg:items-center gap-3 mb-6 border-b border-slate-700/50 pb-4">
+                <h2 class="text-lg font-bold flex items-center text-slate-100">
+                    <i data-lucide="line-chart" class="w-5 h-5 mr-2 text-sky-400"></i>
+                    Meteograma 72h · <span id="chart-node-title" class="ml-2 text-slate-300 font-medium">Nodo Seleccionado</span>
+                </h2>
+                <div class="flex items-center gap-4 text-xs font-medium bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700">
+                    <span class="flex items-center"><div class="w-3 h-0.5 bg-rose-400 mr-1.5"></div> Temp (°C)</span>
+                    <span class="flex items-center"><div class="w-3 h-3 bg-sky-400/50 mr-1.5 rounded-sm"></div> Viento</span>
+                    <span class="flex items-center"><div class="w-3 h-3 bg-sky-100/80 mr-1.5 rounded-sm"></div> Nieve</span>
+                </div>
+            </div>
+            <div class="relative w-full overflow-x-auto no-scrollbar">
+                <div class="min-w-[800px]">
+                    <svg id="meteogram-chart" class="mini-chart" viewBox="0 0 1100 260" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div class="glass rounded-2xl p-6">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                    <i data-lucide="cloud" class="w-5 h-5 mr-2 text-slate-300"></i>
+                    Nubosidad por Capas
+                </h2>
+                <svg id="cloud-chart" class="small-chart" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+            </div>
+
+            <div class="glass rounded-2xl p-6">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                    <i data-lucide="wind" class="w-5 h-5 mr-2 text-cyan-300"></i>
+                    Vientos en Altura (hPa)
+                </h2>
+                <div id="pressure-winds" class="space-y-2.5 text-sm"></div>
+            </div>
+
+            <div class="glass rounded-2xl p-6 xl:col-span-1 md:col-span-2">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                    <i data-lucide="zap" class="w-5 h-5 mr-2 text-yellow-300"></i>
+                    Índices de Inestabilidad
+                </h2>
+                <div id="instability-panel" class="space-y-2.5 text-sm"></div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div class="glass rounded-2xl p-6">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                    <i data-lucide="eye" class="w-5 h-5 mr-2 text-blue-300"></i>
+                    Visibilidad / Techo / Humedad
+                </h2>
+                <div id="visibility-panel" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm"></div>
+            </div>
+
+            <div class="glass rounded-2xl p-6">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                    <i data-lucide="git-compare" class="w-5 h-5 mr-2 text-pink-300"></i>
+                    Tendencia del Modelo (Drift)
+                </h2>
+                <div id="drift-panel" class="text-sm text-slate-300"></div>
+            </div>
+        </section>
+
+        <section class="glass rounded-2xl p-6">
+            <h2 class="text-lg font-bold mb-5 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                <i data-lucide="columns-3" class="w-5 h-5 mr-2 text-purple-300"></i>
+                Comparativa Cruda de Modelos · Cumbre El Plomo
+            </h2>
+            <div class="overflow-x-auto rounded-xl border border-slate-700/50 bg-slate-900/40">
+                <table class="w-full text-left border-collapse min-w-[800px]">
+                    <thead>
+                        <tr class="border-b border-slate-700 bg-slate-800/80 text-xs uppercase tracking-wider text-slate-400">
+                            <th class="p-3 font-semibold">Modelo Base</th>
+                            <th class="p-3 font-semibold text-center">Temp.</th>
+                            <th class="p-3 font-semibold text-center">Viento</th>
+                            <th class="p-3 font-semibold text-center">Ráfaga</th>
+                            <th class="p-3 font-semibold text-center">CAPE</th>
+                            <th class="p-3 font-semibold text-center">Nieve 24h</th>
+                            <th class="p-3 font-semibold text-right">Observación</th>
+                        </tr>
+                    </thead>
+                    <tbody id="model-compare-table" class="text-sm divide-y divide-slate-700/50"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div class="glass rounded-2xl p-6 flex flex-col">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                    <i data-lucide="bell-ring" class="w-5 h-5 mr-2 text-red-400"></i>
+                    Alertas y Webhooks
+                </h2>
+                <div id="alerts-panel" class="space-y-2.5 text-sm flex-grow"></div>
+                <div class="mt-4 pt-4 border-t border-slate-700/50 flex flex-col sm:flex-row gap-2">
+                    <div class="relative flex-grow">
+                        <i data-lucide="link" class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                        <input id="webhook-url" type="url" class="w-full bg-slate-900/80 border border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none rounded-lg pl-9 pr-3 py-2 text-sm text-slate-200 transition-all placeholder-slate-500" placeholder="https://hook.make.com/..." />
+                    </div>
+                    <button onclick="saveWebhook()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors shadow-lg shadow-indigo-900/20 whitespace-nowrap">
+                        Guardar Hook
+                    </button>
+                </div>
+            </div>
+
+            <div class="glass rounded-2xl p-6 flex flex-col">
+                <h2 class="text-lg font-bold mb-4 flex items-center text-slate-100 border-b border-slate-700/50 pb-3">
+                    <i data-lucide="satellite" class="w-5 h-5 mr-2 text-indigo-300"></i>
+                    Capa Sinóptica WMS (Windy)
+                </h2>
+                <div class="flex-grow relative rounded-xl overflow-hidden border border-slate-700 bg-slate-900 min-h-[300px]">
+                    <iframe
+                        title="Windy Synoptic Map"
+                        src="https://embed.windy.com/embed2.html?lat=-33.25&lon=-70.23&detailLat=-33.25&detailLon=-70.23&width=650&height=350&zoom=9&level=surface&overlay=wind&product=ecmwf"
+                        class="absolute inset-0 w-full h-full border-0">
+                    </iframe>
+                </div>
+            </div>
+        </section>
+
+        <section class="glass rounded-2xl p-6">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-5 border-b border-slate-700/50 pb-4">
+                <h2 class="text-lg font-bold text-slate-100 flex items-center">
+                    <i data-lucide="calendar-days" class="w-5 h-5 mr-2 text-emerald-400"></i>
+                    Predicción Diaria · <span id="table-node-title" class="ml-2 font-medium text-slate-300">Nodo Seleccionado</span>
+                </h2>
+                <div class="flex flex-wrap gap-3 text-[11px] font-bold uppercase tracking-wider bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+                    <div class="flex items-center text-emerald-400"><span class="risk-dot bg-emerald-500 mr-1.5 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></span> Ventana</div>
+                    <div class="flex items-center text-yellow-400"><span class="risk-dot bg-yellow-500 mr-1.5"></span> Marginal</div>
+                    <div class="flex items-center text-red-400"><span class="risk-dot bg-red-500 mr-1.5 shadow-[0_0_8px_rgba(239,68,68,0.6)]"></span> Peligro</div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-700/50 bg-slate-900/40">
+                <table class="w-full text-left border-collapse min-w-[960px]">
+                    <thead>
+                    <tr class="border-b border-slate-700 bg-slate-800/80 text-xs uppercase tracking-wider text-slate-400">
+                        <th class="p-3 font-semibold">Día</th>
+                        <th class="p-3 font-semibold text-center">Clima</th>
+                        <th class="p-3 font-semibold text-center">Temp (M/m)</th>
+                        <th class="p-3 font-semibold text-center">Precip.</th>
+                        <th class="p-3 font-semibold text-center">Viento/Ráfaga</th>
+                        <th class="p-3 font-semibold text-center" title="Spread o desviación estándar entre modelos">Incert.</th>
+                        <th class="p-3 font-semibold text-center">Nieve</th>
+                        <th class="p-3 font-semibold text-center">UV</th>
+                        <th class="p-3 font-semibold text-center" title="Machine Learning: Probabilidad de Abortar">Turn. ML</th>
+                        <th class="p-3 font-semibold text-right">Viabilidad</th>
+                    </tr>
+                    </thead>
+                    <tbody id="forecast-table" class="text-sm divide-y divide-slate-700/50"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="glass rounded-2xl p-6">
+            <h2 class="text-lg font-bold mb-5 flex items-center text-slate-100 border-b border-slate-700/50 pb-4">
+                <i data-lucide="layers" class="w-5 h-5 mr-2 text-cyan-400"></i>
+                Matriz Vertical (Hora Actual)
+            </h2>
+            <div class="overflow-x-auto rounded-xl border border-slate-700/50 bg-slate-900/40">
+                <table class="w-full text-left border-collapse min-w-[900px]">
+                    <thead>
+                    <tr class="border-b border-slate-700 bg-slate-800/80 text-xs uppercase tracking-wider text-slate-400">
+                        <th class="p-3 font-semibold">Cota / Nodo</th>
+                        <th class="p-3 font-semibold text-center">Elevación</th>
+                        <th class="p-3 font-semibold text-center">Temp</th>
+                        <th class="p-3 font-semibold text-center">RH / Td</th>
+                        <th class="p-3 font-semibold text-center">Viento</th>
+                        <th class="p-3 font-semibold text-center">Ráfaga</th>
+                        <th class="p-3 font-semibold text-center">CAPE</th>
+                        <th class="p-3 font-semibold text-center">Isoterma 0°</th>
+                        <th class="p-3 font-semibold text-center" title="Desviación Estándar de Viento">Spread</th>
+                        <th class="p-3 font-semibold text-right">Estado Actual</th>
+                    </tr>
+                    </thead>
+                    <tbody id="vertical-table" class="text-sm divide-y divide-slate-700/50"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="text-center text-xs text-slate-400 bg-slate-900/60 border border-slate-800 p-5 rounded-xl shadow-inner mt-8">
+            <p class="flex items-center justify-center gap-2">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500"></i>
+                <strong class="text-slate-200">Aviso de Seguridad:</strong>
+                Este sistema es una herramienta de planificación algorítmica. En alta montaña debes contrastar siempre con observación local y mantener un criterio conservador.
+            </p>
+        </div>
+
+        <!-- Hidden Print Container -->
+        <div id="print-report" class="print-only p-8 text-black bg-white"></div>
+    </div>
+</main>
+
+<script>
+lucide.createIcons();
+
+/* ============================================================
+   CUSTOM TOAST NOTIFICATIONS
+============================================================ */
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    
+    let bgClass = 'bg-slate-800 border-slate-600';
+    let icon = 'info';
+    let iconColor = 'text-blue-400';
+    
+    if (type === 'error') {
+        bgClass = 'bg-red-900/90 border-red-700';
+        icon = 'alert-circle';
+        iconColor = 'text-red-300';
+    } else if (type === 'success') {
+        bgClass = 'bg-emerald-900/90 border-emerald-700';
+        icon = 'check-circle';
+        iconColor = 'text-emerald-300';
+    } else if (type === 'warning') {
+        bgClass = 'bg-yellow-900/90 border-yellow-700';
+        icon = 'alert-triangle';
+        iconColor = 'text-yellow-300';
+    }
+
+    toast.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border ${bgClass} text-white text-sm font-medium transform transition-all duration-300 translate-y-4 opacity-0`;
+    
+    toast.innerHTML = `
+        <i data-lucide="${icon}" class="w-5 h-5 ${iconColor}"></i>
+        <span>${message}</span>
+    `;
+    
+    container.appendChild(toast);
+    lucide.createIcons({root: toast});
+    
+    // Animate in
+    requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-4', 'opacity-0');
+    });
+    
+    // Animate out and remove
+    setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-x-4');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+/* ============================================================
+   CONFIGURACIÓN GENERAL
+============================================================ */
+
+const expeditionRoute = [
+    { id: 'vn',  name: 'Valle Nevado (Base)', lat: -33.3538, lon: -70.2491, elev: 3025, type: 'start' },
+    { id: 'pn',  name: 'Piedra Numerada',            lat: -33.3160, lon: -70.2280, elev: 3420, type: 'camp' },
+    { id: 'fed', name: 'CB Federación',              lat: -33.2660, lon: -70.2210, elev: 4150, type: 'camp' },
+    { id: 'leo', name: 'Cerro Leonera',              lat: -33.2450, lon: -70.2450, elev: 4954, type: 'summit-alt' },
+    { id: 'plo', name: 'Cumbre El Plomo',            lat: -33.2320, lon: -70.2140, elev: 5424, type: 'summit' }
+];
+
+const modelStack = [
+    { key: 'ecmwf_ifs04',  label: 'ECMWF (Europeo)', weight: 0.40 },
+    { key: 'gfs_seamless', label: 'GFS (NOAA)',      weight: 0.25 },
+    { key: 'icon_global',  label: 'ICON (Alemán)',   weight: 0.25 },
+    { key: 'best_match',   label: 'Ensemble Mix',    weight: 0.10 }
+];
+
+const V5_CONFIG = {
+    summitStartHour: 5,
+    summitEndHour: 14,
+    maxSummitWind: 35,
+    maxSummitGust: 55,
+    maxCape: 180,
+    maxSnow24h: 2.0,
+    maxTurnaroundProbability: 0.35,
+    maxSpreadWind: 10
+};
+
+const weatherCodes = {
+    0: { text: "Despejado", icon: "sun", color: "text-yellow-400" },
+    1: { text: "Mayormente Despejado", icon: "cloud-sun", color: "text-slate-300" },
+    2: { text: "Parcialmente Nublado", icon: "cloud-sun", color: "text-slate-400" },
+    3: { text: "Nublado", icon: "cloud", color: "text-slate-500" },
+    45: { text: "Niebla", icon: "cloud-fog", color: "text-slate-400" },
+    48: { text: "Niebla Escarcha", icon: "cloud-fog", color: "text-slate-400" },
+    51: { text: "Llovizna Ligera", icon: "cloud-drizzle", color: "text-blue-300" },
+    53: { text: "Llovizna", icon: "cloud-drizzle", color: "text-blue-400" },
+    55: { text: "Llovizna Fuerte", icon: "cloud-rain", color: "text-blue-500" },
+    61: { text: "Lluvia Ligera", icon: "cloud-rain", color: "text-blue-400" },
+    63: { text: "Lluvia", icon: "cloud-rain", color: "text-blue-500" },
+    65: { text: "Lluvia Fuerte", icon: "cloud-lightning", color: "text-blue-600" },
+    71: { text: "Nieve Ligera", icon: "cloud-snow", color: "text-sky-200" },
+    73: { text: "Nieve", icon: "cloud-snow", color: "text-white" },
+    75: { text: "Nevada Fuerte", icon: "snowflake", color: "text-white" },
+    77: { text: "Granizo", icon: "cloud-snow", color: "text-slate-200" },
+    80: { text: "Chubascos", icon: "cloud-rain", color: "text-blue-400" },
+    81: { text: "Chubascos Fuertes", icon: "cloud-rain", color: "text-blue-500" },
+    82: { text: "Tormenta Lluvia", icon: "cloud-lightning", color: "text-indigo-400" },
+    85: { text: "Chubascos Nieve", icon: "cloud-snow", color: "text-sky-200" },
+    86: { text: "Tormenta Nieve", icon: "snowflake", color: "text-white" },
+    95: { text: "Tormenta Eléctrica", icon: "cloud-lightning", color: "text-purple-400" },
+    96: { text: "Tormenta c/ Granizo", icon: "cloud-lightning", color: "text-purple-500" },
+    99: { text: "Tormenta Fuerte", icon: "cloud-lightning", color: "text-purple-600" }
+};
+
+let rawModelResponses = [];
+let weatherData = [];
+let selectedNodeId = 'fed';
+let currentDayCache = new Date().getDate();
+
+let mapInstance = null;
+let routeLayer = null;
+let markerLayer = null;
+let fullTrackLayer = null;
+let fullRouteTrack = [];
+
+function safeValue(v, fallback = 0) {
+    return Number.isFinite(v) ? v : fallback;
+}
+
+function mean(arr) {
+    const a = arr.filter(Number.isFinite);
+    if (!a.length) return 0;
+    return a.reduce((s, v) => s + v, 0) / a.length;
+}
+
+function stddev(arr) {
+    const a = arr.filter(Number.isFinite);
+    if (a.length < 2) return 0;
+    const m = mean(a);
+    return Math.sqrt(a.reduce((s, v) => s + Math.pow(v - m, 2), 0) / (a.length - 1));
+}
+
+function getLocalISODate(date) {
+    const tzoffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzoffset).toISOString().slice(0, 10);
+}
+
+function formatDisplayDate(dateString, isToday) {
+    if (isToday) return 'Hoy';
+    const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const parts = dateString.split('-');
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    return `${days[date.getDay()]} ${date.getDate()}`;
+}
+
+function currentHourIndex(data) {
+    if (!data || !data.current || !data.hourly || !data.hourly.time) return 0;
+    const currentHourISO = data.current.time.substring(0, 14) + "00";
+    let idx = data.hourly.time.findIndex(t => t === currentHourISO);
+    if (idx === -1) idx = data.hourly.time.findIndex(t => t.startsWith(data.current.time.substring(0, 13)));
+    if (idx === -1) idx = 0;
+    return idx;
+}
+
+function getRiskBadge(level) {
+    if (level === 'VENTANA') {
+        return { bg: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]', text: 'Ventana Óptima', color: 'text-emerald-400', dot: '#10b981' };
+    }
+    if (level === 'MARGINAL') {
+        return { bg: 'bg-yellow-500', text: 'Marginal', color: 'text-yellow-400', dot: '#eab308' };
+    }
+    return { bg: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]', text: 'No Intentar (Peligro)', color: 'text-red-500', dot: '#ef4444' };
+}
+
+function getWindRiskColor(speed) {
+    if (speed < 30) return 'text-emerald-400';
+    if (speed < 50) return 'text-yellow-400';
+    return 'text-red-500 font-bold drop-shadow-md';
+}
+
+function orographicWindFactor(elev) {
+    if (elev >= 5300) return 1.45; // Cumbre El Plomo
+    if (elev >= 4900) return 1.32; // Leonera
+    if (elev >= 4300) return 1.18; // Sobre Federación
+    if (elev >= 3500) return 1.08; // Piedra Numerada
+    return 1.00; // Base
+}
+
+function calcSnow24h(data, startIdx) {
+    let snow = 0;
+    for (let i = startIdx; i < startIdx + 24 && i < data.hourly.time.length; i++) {
+        snow += safeValue(data.hourly.snowfall?.[i], 0);
+    }
+    return snow;
+}
+
+function getModelValues(pointIndex, section, variable, idx = null) {
+    const values = [];
+    rawModelResponses.forEach(model => {
+        const p = model.data?.[pointIndex];
+        if (!p) return;
+        const value = idx === null ? p?.[section]?.[variable] : p?.[section]?.[variable]?.[idx];
+        if (Number.isFinite(value)) values.push(value);
+    });
+    return values;
+}
+
+function getSpread(pointIndex, section, variable, idx = null) {
+    return stddev(getModelValues(pointIndex, section, variable, idx));
+}
+
+/* ============================================================
+   CARGA TRACK REAL
+============================================================ */
+
+async function loadRealTrack() {
+    try {
+        const res = await fetch('el_plomo_lineas.txt', { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudo leer el archivo local. Usando fallback.');
+        const txt = await res.text();
+
+        const parsed = parseTrackText(txt);
+        if (!parsed.length) throw new Error('No se detectaron coordenadas válidas en el archivo');
+
+        fullRouteTrack = parsed;
+        document.getElementById('track-status').innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 inline mr-1 text-emerald-400"></i> Track Real (${fullRouteTrack.length} pts)`;
+    } catch (e) {
+        console.warn('Track real no disponible. Usando fallback por nodos:', e.message);
+        fullRouteTrack = expeditionRoute.map(p => [p.lat, p.lon]);
+        document.getElementById('track-status').innerHTML = `<i data-lucide="alert-circle" class="w-3.5 h-3.5 inline mr-1 text-amber-400"></i> Track (Nodos Básicos)`;
+    }
+    lucide.createIcons();
+}
+
+function parseTrackText(txt) {
+    let coords = [];
+    try {
+        const jsonLikeStart = txt.indexOf('{');
+        if (jsonLikeStart >= 0) {
+            const maybeJson = txt.slice(jsonLikeStart);
+            const gj = JSON.parse(maybeJson);
+            const raw = gj.features?.[0]?.geometry?.coordinates;
+            if (Array.isArray(raw)) {
+                coords = raw
+                    .filter(c => Array.isArray(c) && c.length >= 2)
+                    .map(c => [Number(c[1]), Number(c[0])])
+                    .filter(c => Number.isFinite(c[0]) && Number.isFinite(c[1]));
+                if (coords.length) return downsampleTrack(coords, 2500);
+            }
+        }
+    } catch (_) {}
+
+    const regex = /(-?7\d\.\d+)\s+(-?3\d\.\d+)/g;
+    let m;
+    while ((m = regex.exec(txt)) !== null) {
+        const lon = Number(m[1]);
+        const lat = Number(m[2]);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) coords.push([lat, lon]);
+    }
+
+    return downsampleTrack(coords, 2500);
+}
+
+function downsampleTrack(points, maxPoints = 2500) {
+    if (points.length <= maxPoints) return points;
+    const step = Math.ceil(points.length / maxPoints);
+    const sampled = [];
+    for (let i = 0; i < points.length; i += step) sampled.push(points[i]);
+    if (points.length) sampled.push(points[points.length - 1]);
+    return sampled;
+}
+
+/* ============================================================
+   API OPEN-METEO
+============================================================ */
+
+function buildOpenMeteoUrl(modelKey, mode = 'advanced') {
+    const lats = expeditionRoute.map(r => r.lat).join(',');
+    const lons = expeditionRoute.map(r => r.lon).join(',');
+    const elevs = expeditionRoute.map(r => r.elev).join(',');
+
+    const currentVars = [
+        'temperature_2m',
+        'relative_humidity_2m',
+        'apparent_temperature',
+        'weather_code',
+        'wind_speed_10m',
+        'wind_gusts_10m',
+        'wind_direction_10m'
+    ].join(',');
+
+    const baseHourly = [
+        'temperature_2m',
+        'relative_humidity_2m',
+        'dew_point_2m',
+        'apparent_temperature',
+        'weather_code',
+        'wind_speed_10m',
+        'wind_gusts_10m',
+        'wind_direction_10m',
+        'freezing_level_height',
+        'snowfall',
+        'precipitation_probability',
+        'cape',
+        'uv_index',
+        'cloud_cover',
+        'cloud_cover_low',
+        'cloud_cover_mid',
+        'cloud_cover_high',
+        'visibility',
+        'pressure_msl',
+        'surface_pressure'
+    ];
+
+    const pressureHourly = [
+        'temperature_850hPa',
+        'relative_humidity_850hPa',
+        'dew_point_850hPa',
+        'wind_speed_850hPa',
+        'wind_direction_850hPa',
+        'temperature_700hPa',
+        'relative_humidity_700hPa',
+        'dew_point_700hPa',
+        'wind_speed_700hPa',
+        'wind_direction_700hPa',
+        'temperature_500hPa',
+        'relative_humidity_500hPa',
+        'dew_point_500hPa',
+        'wind_speed_500hPa',
+        'wind_direction_500hPa'
+    ];
+
+    const hourlyVars = mode === 'advanced'
+        ? baseHourly.concat(pressureHourly).join(',')
+        : baseHourly.join(',');
+
+    const dailyVars = [
+        'weather_code',
+        'temperature_2m_max',
+        'temperature_2m_min',
+        'snowfall_sum',
+        'wind_speed_10m_max',
+        'wind_gusts_10m_max',
+        'precipitation_probability_max',
+        'uv_index_max'
+    ].join(',');
+
+    return `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&elevation=${elevs}&current=${currentVars}&hourly=${hourlyVars}&daily=${dailyVars}&timezone=auto&models=${modelKey}&forecast_days=7&past_days=0`;
+}
+
+async function fetchModel(config) {
+    for (const mode of ['advanced', 'base']) {
+        try {
+            const url = buildOpenMeteoUrl(config.key, mode);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`${config.label} no disponible en modo ${mode}`);
+            const json = await res.json();
+            if (!Array.isArray(json)) throw new Error(`${config.label} respuesta inválida`);
+            return { config: { ...config, mode }, data: json };
+        } catch (e) {
+            console.warn(`Fallback para modelo ${config.key}:`, e.message);
+        }
+    }
+    throw new Error(`${config.label} falló por completo`);
+}
+
+function weightedAverageForPath(pointIndex, section, variable, idx, fallback = null) {
+    let num = 0;
+    let den = 0;
+
+    rawModelResponses.forEach(model => {
+        const p = model.data?.[pointIndex];
+        const value = p?.[section]?.[variable]?.[idx];
+        if (Number.isFinite(value)) {
+            num += value * model.config.weight;
+            den += model.config.weight;
+        }
+    });
+
+    if (den === 0) return fallback;
+    return num / den;
+}
+
+function weightedCurrent(pointIndex, variable, fallback = null) {
+    let num = 0;
+    let den = 0;
+
+    rawModelResponses.forEach(model => {
+        const p = model.data?.[pointIndex];
+        const value = p?.current?.[variable];
+        if (Number.isFinite(value)) {
+            num += value * model.config.weight;
+            den += model.config.weight;
+        }
+    });
+
+    if (den === 0) return fallback;
+    return num / den;
+}
+
+function blendWeatherData() {
+    const base = rawModelResponses[0].data;
+
+    return expeditionRoute.map((_, pointIndex) => {
+        const b = base[pointIndex];
+        const blended = JSON.parse(JSON.stringify(b));
+
+        const currentNumeric = [
+            'temperature_2m',
+            'relative_humidity_2m',
+            'apparent_temperature',
+            'wind_speed_10m',
+            'wind_gusts_10m',
+            'wind_direction_10m'
+        ];
+
+        currentNumeric.forEach(v => {
+            blended.current[v] = weightedCurrent(pointIndex, v, b.current[v]);
+        });
+
+        const hourlyNumeric = Object.keys(blended.hourly).filter(k => k !== 'time');
+
+        hourlyNumeric.forEach(v => {
+            if (!Array.isArray(blended.hourly[v])) return;
+            blended.hourly[v] = blended.hourly[v].map((_, idx) =>
+                weightedAverageForPath(pointIndex, 'hourly', v, idx, b.hourly[v][idx])
+            );
+        });
+
+        const dailyNumeric = Object.keys(blended.daily).filter(k => k !== 'time' && k !== 'weather_code');
+
+        dailyNumeric.forEach(v => {
+            if (!Array.isArray(blended.daily[v])) return;
+            blended.daily[v] = blended.daily[v].map((_, idx) =>
+                weightedAverageForPath(pointIndex, 'daily', v, idx, b.daily[v][idx])
+            );
+        });
+
+        return blended;
+    });
+}
+
+/* ============================================================
+   RIESGO / ML / INESTABILIDAD
+============================================================ */
+
+function predictTurnaroundProbability(features) {
+    const {
+        score,
+        wind,
+        gust,
+        snow24h,
+        cape,
+        temp,
+        freezeAbove,
+        precipProb,
+        spreadWind,
+        spreadGust,
+        visibility
+    } = features;
+
+    // Logit function tuned for Andes alpine conditions
+    let z =
+        -4.4 +
+        0.52 * score +
+        0.034 * wind +
+        0.024 * gust +
+        0.30 * snow24h +
+        0.0045 * cape +
+        0.017 * precipProb +
+        0.10 * spreadWind +
+        0.07 * spreadGust +
+        (temp < -15 ? 0.8 : 0) +
+        (freezeAbove ? 0.35 : 0) +
+        (visibility < 3000 ? 0.5 : 0);
+
+    const p = 1 / (1 + Math.exp(-z));
+    return Math.max(0, Math.min(0.98, p)); // Cap at 98%
+}
+
+function computeMountainRisk(data, idxHr, elev, pointIndex = 0) {
+    const factor = orographicWindFactor(elev);
+
+    const temp = safeValue(data.hourly.temperature_2m?.[idxHr], data.current.temperature_2m);
+    const feels = safeValue(data.hourly.apparent_temperature?.[idxHr], data.current.apparent_temperature ?? temp);
+    const rh = safeValue(data.hourly.relative_humidity_2m?.[idxHr], data.current.relative_humidity_2m ?? 0);
+    const dew = safeValue(data.hourly.dew_point_2m?.[idxHr], temp);
+
+    const windRaw = safeValue(data.hourly.wind_speed_10m?.[idxHr], data.current.wind_speed_10m);
+    const gustRaw = safeValue(data.hourly.wind_gusts_10m?.[idxHr], data.current.wind_gusts_10m);
+
+    const wind = windRaw * factor;
+    const gust = gustRaw * factor;
+
+    const snow = safeValue(data.hourly.snowfall?.[idxHr], 0);
+    const snow24h = calcSnow24h(data, idxHr);
+    const cape = safeValue(data.hourly.cape?.[idxHr], 0);
+    const freeze = safeValue(data.hourly.freezing_level_height?.[idxHr], 0);
+    const precipProb = safeValue(data.hourly.precipitation_probability?.[idxHr], 0);
+    const visibility = safeValue(data.hourly.visibility?.[idxHr], 99999);
+
+    const spreadWind = getSpread(pointIndex, 'hourly', 'wind_speed_10m', idxHr) * factor;
+    const spreadGust = getSpread(pointIndex, 'hourly', 'wind_gusts_10m', idxHr) * factor;
+
+    const hour = Number(data.hourly.time[idxHr]?.split('T')[1]?.slice(0, 2) ?? 0);
+    const freezeAbove = freeze > elev;
+
+    let score = 0;
+    const reasons = [];
+
+    // Wind logic
+    if (wind > 65 || gust > 90) { score += 4; reasons.push('viento/ráfaga extrema'); }
+    else if (wind > 50 || gust > 70) { score += 3; reasons.push('viento fuerte'); }
+    else if (wind > 35 || gust > 55) { score += 2; reasons.push('viento marginal'); }
+    else if (wind > 25 || gust > 40) { score += 1; reasons.push('viento moderado'); }
+
+    // Uncertainty logic
+    if (spreadWind > 14 || spreadGust > 20) { score += 2; reasons.push('alta incertidumbre'); }
+    else if (spreadWind > 8 || spreadGust > 12) { score += 1; reasons.push('incertidumbre moderada'); }
+
+    // Snow logic
+    if (snow24h > 8) { score += 3; reasons.push('nieve 24h alta'); }
+    else if (snow24h > 3) { score += 2; reasons.push('nieve reciente'); }
+    else if (snow24h > 0.8) { score += 1; reasons.push('nieve ligera'); }
+
+    if (snow24h > 3 && gust > 55) { score += 2; reasons.push('whiteout/ventisca probable'); }
+
+    // Thunderstorm logic
+    if (cape > 600) { score += 3; reasons.push('CAPE alto'); }
+    else if (cape > 300) { score += 2; reasons.push('CAPE medio-alto'); }
+    else if (cape > 120) { score += 1; reasons.push('CAPE bajo-medio'); }
+    if (hour >= 12 && hour <= 20 && cape > 180) { score += 1; reasons.push('convección de tarde'); }
+
+    // Precip logic
+    if (precipProb > 75) { score += 2; reasons.push('precipitación probable'); }
+    else if (precipProb > 40) { score += 1; reasons.push('precipitación posible'); }
+    if (freezeAbove && elev > 4000) { score += 1; reasons.push('isoterma sobre ruta (deshielo)'); }
+
+    // Temp & Visibility
+    if (temp < -22 || feels < -28) { score += 3; reasons.push('frío severo'); }
+    else if (temp < -15 || feels < -20) { score += 2; reasons.push('frío fuerte'); }
+    else if (temp < -8 || feels < -12) { score += 1; reasons.push('frío moderado'); }
+
+    if (visibility < 1000) { score += 2; reasons.push('visibilidad muy baja'); }
+    else if (visibility < 3000) { score += 1; reasons.push('visibilidad reducida'); }
+
+    const level = score <= 3 ? 'VENTANA' : score <= 6 ? 'MARGINAL' : 'PELIGRO';
+
+    const ml = predictTurnaroundProbability({
+        score, wind, gust, snow24h, cape, temp, freezeAbove, precipProb, spreadWind, spreadGust, visibility
+    });
+
+    return {
+        score, level, reasons, temp, feels, rh, dew, wind, gust, snow, snow24h, cape, freeze,
+        precipProb, visibility, ml, factor, spreadWind, spreadGust
+    };
+}
+
+function computeInstability(data, idx) {
+    const t850 = data.hourly.temperature_850hPa?.[idx];
+    const td850 = data.hourly.dew_point_850hPa?.[idx];
+    const t700 = data.hourly.temperature_700hPa?.[idx];
+    const td700 = data.hourly.dew_point_700hPa?.[idx];
+    const t500 = data.hourly.temperature_500hPa?.[idx];
+
+    const out = { ki: null, tt: null, li: null, available: false };
+
+    if ([t850, td850, t700, td700, t500].every(Number.isFinite)) {
+        // K-Index
+        out.ki = (t850 - t500) + td850 - (t700 - td700);
+        // Total Totals Index
+        out.tt = (t850 - t500) + (td850 - t500);
+        // Lifted Index (Simplified approximation)
+        out.li = (t500 - (t850 + 10)); 
+        out.available = true;
+    }
+
+    return out;
+}
+
+/* ============================================================
+   CARGA PRINCIPAL
+============================================================ */
+
+async function loadExpeditionData() {
+    const icon = document.getElementById('refresh-icon');
+    if (icon) icon.classList.add('animate-spin');
+
+    if (weatherData.length === 0) {
+        document.getElementById('loader').classList.remove('hidden');
+        document.getElementById('dashboard').classList.add('hidden');
+    }
+
+    try {
+        await loadRealTrack();
+
+        const previousSnapshot = localStorage.getItem('meteoplomo_last_snapshot');
+        
+        showToast("Conectando con enjambre de modelos...", "info");
+        const attempts = await Promise.allSettled(modelStack.map(fetchModel));
+
+        rawModelResponses = attempts
+            .filter(r => r.status === 'fulfilled')
+            .map(r => r.value);
+
+        if (rawModelResponses.length === 0) {
+            showToast("Fallback a modelo base por problemas de conexión.", "warning");
+            const fallback = await fetchModel({ key: 'best_match', label: 'BestMatch', weight: 1.0 });
+            rawModelResponses = [fallback];
+        }
+
+        // Re-normalize weights
+        const totalWeight = rawModelResponses.reduce((s, m) => s + m.config.weight, 0);
+        rawModelResponses.forEach(m => m.config.weight = m.config.weight / totalWeight);
+
+        weatherData = blendWeatherData();
+
+        const now = new Date();
+        currentDayCache = now.getDate();
+
+        document.getElementById('last-update-time').textContent =
+            now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
+        const status = rawModelResponses
+            .map(m => `${m.config.label} ${(m.config.weight * 100).toFixed(0)}%`)
+            .join(' · ');
+
+        document.getElementById('model-status').innerHTML = `<i data-lucide="layers" class="w-3.5 h-3.5 inline mr-1 text-purple-400"></i> ${status}`;
+
+        document.getElementById('loader').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+
+        showToast("Modelos sincronizados correctamente.", "success");
+
+        renderInterface(previousSnapshot);
+        saveCurrentSnapshot();
+        forceMapResize(350);
+        checkAlerts();
+
+    } catch (error) {
+        console.error(error);
+        showToast("Error crítico cargando los modelos meteorológicos. Reintenta en unos momentos.", "error");
+    } finally {
+        if (icon) icon.classList.remove('animate-spin');
+        lucide.createIcons();
+    }
+}
+
+function saveCurrentSnapshot() {
+    try {
+        const summitIndex = expeditionRoute.findIndex(r => r.id === 'plo');
+        const d = weatherData[summitIndex];
+        const idx = currentHourIndex(d);
+        const r = computeMountainRisk(d, idx, 5424, summitIndex);
+
+        localStorage.setItem('meteoplomo_last_snapshot', JSON.stringify({
+            savedAt: new Date().toISOString(),
+            summitTime: d.current.time,
+            wind: r.wind,
+            gust: r.gust,
+            temp: r.temp,
+            ml: r.ml,
+            score: r.score
+        }));
+    } catch (e) {
+        console.warn('No se pudo guardar snapshot:', e);
+    }
+}
+
+function renderInterface(previousSnapshot = null) {
+    renderRouteNodes();
+    renderAltitudeProfile();
+    renderMap();
+    selectNode(selectedNodeId); // Triggers sub-renders
+    renderVerticalTable();
+    renderGlobalRouteRisk();
+    renderModelCompare();
+    renderDrift(previousSnapshot);
+}
+
+/* ============================================================
+   RENDER NODOS / DETALLE
+============================================================ */
+
+function getNodeIcon(routePoint) {
+    if (routePoint.type === 'summit') return '<i data-lucide="flag-triangle-right" class="w-5 h-5 text-amber-400 drop-shadow"></i>';
+    if (routePoint.type === 'summit-alt') return '<i data-lucide="mountain" class="w-5 h-5 text-slate-300"></i>';
+    if (routePoint.type === 'camp') return '<i data-lucide="tent" class="w-5 h-5 text-indigo-400"></i>';
+    return '<i data-lucide="car" class="w-5 h-5 text-emerald-400"></i>';
+}
+
+function renderRouteNodes() {
+    const container = document.getElementById('route-nodes');
+    container.innerHTML = '';
+
+    [...expeditionRoute].reverse().forEach(routePoint => {
+        const dataIndex = expeditionRoute.findIndex(r => r.id === routePoint.id);
+        const data = weatherData[dataIndex];
+        const idx = currentHourIndex(data);
+        const risk = computeMountainRisk(data, idx, routePoint.elev, dataIndex);
+        const isActive = routePoint.id === selectedNodeId;
+        const badge = getRiskBadge(risk.level);
+
+        const nodeHtml = `
+            <div onclick="selectNode('${routePoint.id}')"
+                 class="glass glass-hover rounded-xl p-4 cursor-pointer relative flex items-center justify-between border ${isActive ? 'node-active bg-slate-800/90' : 'border-slate-700/50 bg-slate-900/30'} group">
+                <div class="hidden sm:block absolute -left-[37px] w-4 h-4 rounded-full border-2 border-slate-900 z-20 ${isActive ? 'bg-sky-400 shadow-[0_0_12px_#38bdf8]' : 'bg-slate-600 group-hover:bg-slate-400 transition-colors'}"></div>
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 bg-slate-800/80 border border-slate-700 rounded-lg group-hover:border-slate-500 transition-colors">${getNodeIcon(routePoint)}</div>
+                    <div>
+                        <h4 class="font-bold text-slate-100">${routePoint.name}</h4>
+                        <p class="text-xs font-medium text-slate-400 mt-0.5">${routePoint.elev} m · <span class="${badge.color}">${badge.text}</span></p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-xl font-bold ${risk.temp <= 0 ? 'text-sky-300' : 'text-orange-300'} drop-shadow-sm">${Math.round(risk.temp)}°</p>
+                    <p class="text-xs font-medium text-slate-400 flex items-center justify-end mt-0.5">
+                        <i data-lucide="wind" class="w-3 h-3 mr-1"></i>${Math.round(risk.wind)} k/h
+                    </p>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', nodeHtml);
+    });
+
+    lucide.createIcons();
+}
+
+function selectNode(id) {
+    selectedNodeId = id;
+
+    const dataIndex = expeditionRoute.findIndex(r => r.id === id);
+    const routePoint = expeditionRoute[dataIndex];
+    const data = weatherData[dataIndex];
+    const idx = currentHourIndex(data);
+    const curr = data.current;
+    const risk = computeMountainRisk(data, idx, routePoint.elev, dataIndex);
+
+    renderRouteNodes();
+
+    document.getElementById('detail-name').textContent = routePoint.name;
+    document.getElementById('detail-alt').textContent = `${routePoint.elev} msnm`;
+    document.getElementById('detail-temp').textContent = Math.round(risk.temp);
+    document.getElementById('detail-feels').textContent = Math.round(risk.feels);
+    document.getElementById('detail-wind').textContent = Math.round(risk.wind);
+    
+    const gustsEl = document.getElementById('detail-gusts');
+    gustsEl.textContent = Math.round(risk.gust);
+    gustsEl.className = getWindRiskColor(risk.gust);
+
+    document.getElementById('global-isotherm').textContent = Math.round(risk.freeze || 0);
+    document.getElementById('detail-rh').textContent = Math.round(risk.rh);
+    document.getElementById('detail-dew').textContent = Math.round(risk.dew);
+
+    const uvNow = data.hourly.uv_index?.[idx];
+    document.getElementById('detail-uv').textContent = Number.isFinite(uvNow) ? uvNow.toFixed(1) : '--';
+
+    const windDirIcon = document.getElementById('wind-dir-icon');
+    if (windDirIcon && curr.wind_direction_10m !== undefined) {
+        windDirIcon.style.transform = `rotate(${curr.wind_direction_10m}deg)`;
+    }
+
+    const badge = getRiskBadge(risk.level);
+    const wCode = weatherCodes[curr.weather_code] || weatherCodes[0];
+
+    document.getElementById('detail-desc').textContent = badge.text;
+    document.getElementById('detail-desc').className = `${badge.color} mr-2 drop-shadow`;
+    document.getElementById('detail-icon').innerHTML =
+        `<i data-lucide="${wCode.icon}" class="w-8 h-8 ${wCode.color} drop-shadow-lg"></i>`;
+
+    let summaryText = `Score ${risk.score} · factor v. orográfico x${risk.factor.toFixed(2)}`;
+    if(risk.reasons.length > 0) summaryText += ` · ${risk.reasons.join(', ')}`;
+    document.getElementById('detail-risk-summary').innerHTML = `<i data-lucide="activity" class="w-3.5 h-3.5 inline mr-1 text-slate-400"></i> ${summaryText}`;
+
+    renderCape(risk);
+    document.getElementById('ml-prob').textContent = Math.round(risk.ml * 100);
+
+    // Render Sub-components
+    renderForecastTable(data, routePoint, dataIndex);
+    renderAltitudeProfile();
+    renderMap();
+    renderSummitWindow();
+    renderUncertaintyPanel();
+    renderBestAttackWindow();
+    renderMeteogram(data, dataIndex);
+    renderCloudChart(data);
+    renderPressureWinds(data, idx);
+    renderInstability(data, idx);
+    renderVisibilityPanel(data, idx);
+
+    // Update dynamic titles
+    document.getElementById('chart-node-title').textContent = routePoint.name;
+    document.getElementById('table-node-title').textContent = routePoint.name;
+
+    lucide.createIcons();
+}
+
+function renderCape(risk) {
+    const capeBadge = document.getElementById('cape-badge');
+    const capeContainer = document.getElementById('cape-container');
+
+    document.getElementById('cape-text').textContent = `CAPE: ${Math.round(risk.cape)} J/kg`;
+
+    if (risk.cape < 120) {
+        capeBadge.textContent = 'Bajo';
+        capeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider inline-block mt-1.5 bg-slate-700 text-slate-300';
+        capeContainer.className = 'bg-slate-800/40 border border-slate-700 p-4 rounded-xl';
+    } else if (risk.cape < 300) {
+        capeBadge.textContent = 'Medio';
+        capeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider inline-block mt-1.5 bg-yellow-900/50 text-yellow-400';
+        capeContainer.className = 'bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-xl';
+    } else {
+        capeBadge.textContent = 'ALTO';
+        capeBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider inline-block mt-1.5 bg-red-900/50 text-red-400';
+        capeContainer.className = 'bg-red-900/20 border border-red-700/50 p-4 rounded-xl shadow-inner';
+    }
+}
+
+/* ============================================================
+   TABLAS / VENTANAS / ATAQUE
+============================================================ */
+
+function renderForecastTable(data, routePoint, pointIndex) {
+    const tbody = document.getElementById('forecast-table');
+    tbody.innerHTML = '';
+
+    const daily = data.daily;
+    const localDateString = getLocalISODate(new Date());
+    let startIndex = daily.time.findIndex(dateStr => dateStr >= localDateString);
+    if (startIndex === -1) startIndex = 0;
+
+    for (let i = startIndex; i < daily.time.length; i++) {
+        const apiDate = daily.time[i];
+        const isToday = apiDate === localDateString;
+        const dayCode = weatherCodes[daily.weather_code[i]] || weatherCodes[0];
+
+        const tMax = Math.round(daily.temperature_2m_max[i]);
+        const tMin = Math.round(daily.temperature_2m_min[i]);
+        const precipProb = Math.round(safeValue(daily.precipitation_probability_max?.[i], 0));
+        const snow = safeValue(daily.snowfall_sum?.[i], 0);
+        const uv = safeValue(daily.uv_index_max?.[i], 0);
+
+        const dayStart = `${apiDate}T05:00`;
+        let idx = data.hourly.time.findIndex(t => t >= dayStart);
+        if (idx === -1) idx = currentHourIndex(data);
+
+        const risk = computeMountainRisk(data, idx, routePoint.elev, pointIndex);
+        const badge = getRiskBadge(risk.level);
+
+        const tr = `
+            <tr class="border-b border-slate-700/50 hover:bg-slate-800/60 transition-colors">
+                <td class="py-3 px-3 font-medium ${isToday ? 'text-sky-300 font-bold' : 'text-slate-200'}">${formatDisplayDate(apiDate, isToday)}</td>
+                <td class="py-3 px-3"><div class="flex items-center justify-center" title="${dayCode.text}"><i data-lucide="${dayCode.icon}" class="w-5 h-5 ${dayCode.color}"></i></div></td>
+                <td class="py-3 px-3 text-center"><span class="text-white">${tMax}°</span><span class="text-slate-600 mx-1">/</span><span class="text-slate-400">${tMin}°</span></td>
+                <td class="py-3 px-3 text-center text-blue-300 font-medium">${precipProb > 0 ? precipProb + '%' : '-'}</td>
+                <td class="py-3 px-3 text-center font-bold ${getWindRiskColor(risk.gust)}">${Math.round(risk.wind)}<span class="text-xs font-medium opacity-70 ml-0.5">/ ${Math.round(risk.gust)}</span></td>
+                <td class="py-3 px-3 text-center text-cyan-300 font-medium">±${risk.spreadWind.toFixed(1)}</td>
+                <td class="py-3 px-3 text-center text-sky-200">${snow > 0 ? snow.toFixed(1) + 'cm' : '-'}</td>
+                <td class="py-3 px-3 text-center text-purple-300 font-medium">${uv ? uv.toFixed(1) : '-'}</td>
+                <td class="py-3 px-3 text-center ${risk.ml > 0.5 ? 'text-pink-400 font-bold' : 'text-pink-200 font-medium'}">${Math.round(risk.ml * 100)}%</td>
+                <td class="py-3 px-3 text-right">
+                    <div class="inline-flex items-center bg-slate-900/80 px-3 py-1 rounded-full border border-slate-700 shadow-sm">
+                        <div class="w-2.5 h-2.5 rounded-full ${badge.bg} mr-2"></div>
+                        <span class="text-xs font-bold text-slate-300 tracking-wide uppercase">${badge.text}</span>
+                    </div>
+                </td>
+            </tr>
+        `;
+        tbody.insertAdjacentHTML('beforeend', tr);
+    }
+    lucide.createIcons();
+}
+
+function renderVerticalTable() {
+    const tbody = document.getElementById('vertical-table');
+    tbody.innerHTML = '';
+
+    expeditionRoute.forEach((p, i) => {
+        const data = weatherData[i];
+        const idx = currentHourIndex(data);
+        const r = computeMountainRisk(data, idx, p.elev, i);
+        const badge = getRiskBadge(r.level);
+        const isCurrent = p.id === selectedNodeId;
+
+        const tr = `
+            <tr class="border-b border-slate-700/50 hover:bg-slate-800/60 transition-colors ${isCurrent ? 'bg-slate-800/40' : ''}">
+                <td class="py-3 px-3 font-medium text-slate-200">${p.name} ${isCurrent ? '<i data-lucide="arrow-left" class="w-3.5 h-3.5 inline ml-1 text-sky-400"></i>' : ''}</td>
+                <td class="py-3 px-3 text-center text-indigo-300 font-medium">${p.elev} m</td>
+                <td class="py-3 px-3 text-center font-bold ${r.temp <= 0 ? 'text-sky-300' : 'text-orange-200'}">${Math.round(r.temp)}°</td>
+                <td class="py-3 px-3 text-center text-cyan-300 font-medium">${Math.round(r.rh)}% / ${Math.round(r.dew)}°</td>
+                <td class="py-3 px-3 text-center font-bold ${getWindRiskColor(r.wind)}">${Math.round(r.wind)}</td>
+                <td class="py-3 px-3 text-center font-bold ${getWindRiskColor(r.gust)}">${Math.round(r.gust)}</td>
+                <td class="py-3 px-3 text-center text-yellow-300">${Math.round(r.cape)}</td>
+                <td class="py-3 px-3 text-center text-indigo-300">${Math.round(r.freeze)} m</td>
+                <td class="py-3 px-3 text-center text-cyan-300 font-medium">±${r.spreadWind.toFixed(1)}</td>
+                <td class="py-3 px-3 text-right">
+                    <span class="${badge.color} font-bold text-[11px] uppercase tracking-wider">${badge.text}</span>
+                    <span class="text-[10px] text-slate-500 ml-1.5 font-medium border border-slate-700 px-1.5 py-0.5 rounded">Sc: ${r.score}</span>
+                </td>
+            </tr>
+        `;
+        tbody.insertAdjacentHTML('beforeend', tr);
+    });
+    lucide.createIcons();
+}
+
+function renderSummitWindow() {
+    const container = document.getElementById('summit-window');
+    container.innerHTML = '';
+
+    const summitIndex = expeditionRoute.findIndex(r => r.id === 'plo');
+    const summit = expeditionRoute[summitIndex];
+    const data = weatherData[summitIndex];
+    const now = new Date();
+    let count = 0;
+
+    for (let i = 0; i < data.hourly.time.length && count < 96; i++) {
+        const timeStr = data.hourly.time[i];
+        const dt = new Date(timeStr);
+        if (dt < now) continue;
+
+        const hour = Number(timeStr.split('T')[1].slice(0, 2));
+        if (hour < 4 || hour > 16) continue; // Focus on alpine hours
+
+        const r = computeMountainRisk(data, i, summit.elev, summitIndex);
+        const badge = getRiskBadge(r.level);
+        const datePart = timeStr.split('T')[0];
+        const hourPart = timeStr.split('T')[1].slice(0, 5);
+        const isOptimum = r.level === 'VENTANA';
+
+        const row = `
+            <div class="border ${isOptimum ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800/50 border-slate-700/60'} rounded-xl px-4 py-3 flex items-center justify-between hover:bg-slate-700/50 transition-colors group">
+                <div>
+                    <div class="font-bold ${isOptimum ? 'text-emerald-400' : 'text-slate-200'} text-sm flex items-center">
+                        ${isOptimum ? '<i data-lucide="check-circle-2" class="w-4 h-4 mr-1.5"></i>' : ''}
+                        ${formatDisplayDate(datePart, datePart === getLocalISODate(new Date()))} · ${hourPart}
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-1 font-medium flex gap-2">
+                        <span>T: <strong class="${r.temp < -20 ? 'text-sky-300' : 'text-slate-300'}">${Math.round(r.temp)}°</strong></span>
+                        <span>V: <strong class="${getWindRiskColor(r.wind)}">${Math.round(r.wind)}</strong></span>
+                        <span>R: <strong class="${getWindRiskColor(r.gust)}">${Math.round(r.gust)}</strong></span>
+                        <span class="hidden sm:inline">Vis: ${(r.visibility/1000).toFixed(1)}km</span>
+                    </div>
+                </div>
+                <div class="text-right pl-2 border-l border-slate-700/50 ml-2">
+                    <div class="${badge.color} font-black text-[11px] uppercase tracking-wider mb-0.5">${badge.text}</div>
+                    <div class="text-[10px] font-bold ${r.ml > 0.4 ? 'text-pink-400' : 'text-slate-500'} bg-slate-900/50 px-1.5 py-0.5 rounded border border-slate-700/50 inline-block">${Math.round(r.ml * 100)}% abortar</div>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', row);
+        count++;
+    }
+    lucide.createIcons();
+}
+
+function detectBestSummitAttackWindow() {
+    const summitIndex = expeditionRoute.findIndex(r => r.id === 'plo');
+    const summit = expeditionRoute[summitIndex];
+    const data = weatherData[summitIndex];
+    if (!data?.hourly?.time) return null;
+
+    const now = new Date();
+    let candidates = [];
+
+    function addCandidates(strict) {
+        for (let i = 0; i < data.hourly.time.length; i++) {
+            const timeStr = data.hourly.time[i];
+            const dt = new Date(timeStr);
+            if (dt < now) continue;
+
+            const hour = Number(timeStr.split('T')[1].slice(0, 2));
+            if (hour < V5_CONFIG.summitStartHour || hour > V5_CONFIG.summitEndHour) continue;
+
+            const r = computeMountainRisk(data, i, summit.elev, summitIndex);
+
+            const valid = strict
+                ? r.wind <= V5_CONFIG.maxSummitWind &&
+                  r.gust <= V5_CONFIG.maxSummitGust &&
+                  r.cape <= V5_CONFIG.maxCape &&
+                  r.snow24h <= V5_CONFIG.maxSnow24h &&
+                  r.ml <= V5_CONFIG.maxTurnaroundProbability &&
+                  r.spreadWind <= V5_CONFIG.maxSpreadWind &&
+                  r.level === 'VENTANA'
+                : r.level !== 'PELIGRO';
+
+            if (!valid) continue;
+
+            const softScore =
+                r.score * 10 +
+                r.ml * 30 +
+                r.wind * 0.35 +
+                r.gust * 0.22 +
+                r.spreadWind * 0.8 +
+                r.snow24h * 2 +
+                r.cape * 0.01 +
+                (r.visibility < 5000 ? 4 : 0);
+
+            candidates.push({ index: i, time: timeStr, risk: r, score: softScore, strict });
+        }
+    }
+
+    addCandidates(true);
+    if (!candidates.length) addCandidates(false);
+    if (!candidates.length) return null;
+
+    candidates.sort((a, b) => a.score - b.score);
+    return candidates[0];
+}
+
+function renderBestAttackWindow() {
+    const el = document.getElementById('attack-window-result');
+    if (!el || !weatherData.length) return;
+
+    const best = detectBestSummitAttackWindow();
+
+    if (!best) {
+        el.innerHTML = `
+            <div class="flex items-center text-red-400 font-bold text-lg"><i data-lucide="x-octagon" class="w-5 h-5 mr-2"></i> Sin ventana de ataque recomendable</div>
+            <div class="text-xs font-medium text-slate-400 mt-2 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
+                El algoritmo no detectó una hora aceptable dentro de los parámetros V5.1 para los próximos días. Posible temporal o vientos extremos persistentes.
+            </div>
+        `;
+        lucide.createIcons();
+        return;
+    }
+
+    const date = best.time.split('T')[0];
+    const hour = best.time.split('T')[1].slice(0, 5);
+    const r = best.risk;
+    const badge = getRiskBadge(r.level);
+    const modeLabel = best.strict ? 'ÓPTIMA ESTRICTA' : 'MEJOR ALTERNATIVA MARGINAL';
+    const modeColor = best.strict ? 'text-emerald-400' : 'text-yellow-400';
+
+    el.innerHTML = `
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+                <div class="${modeColor} font-black text-xl flex items-center">
+                    <i data-lucide="check-circle" class="w-5 h-5 mr-2"></i>
+                    ${formatDisplayDate(date, date === getLocalISODate(new Date()))} · ${hour}
+                </div>
+                <div class="text-[11px] font-bold text-slate-400 mt-1.5 uppercase tracking-wide flex items-center gap-2 flex-wrap">
+                    <span class="bg-slate-900/60 px-2 py-0.5 rounded border border-slate-700">${modeLabel}</span>
+                    <span class="bg-slate-900/60 px-2 py-0.5 rounded border border-slate-700">ML: ${Math.round(r.ml * 100)}% Abort</span>
+                    <span class="bg-slate-900/60 px-2 py-0.5 rounded border border-slate-700">Incert: ±${r.spreadWind.toFixed(1)} km/h</span>
+                </div>
+            </div>
+            <div class="text-left lg:text-right">
+                <span class="inline-flex items-center bg-slate-900/80 px-4 py-2 rounded-xl border border-slate-600 shadow-md">
+                    <span class="risk-dot mr-2 shadow-sm" style="background:${badge.dot}"></span>
+                    <span class="text-sm font-bold text-slate-200 tracking-wider uppercase">${badge.text}</span>
+                </span>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 mt-5 text-[11px] font-medium">
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-2.5 text-center shadow-inner">
+                <span class="text-slate-400 block mb-1">Temp</span>
+                <strong class="text-lg ${r.temp < -20 ? 'text-sky-300' : 'text-slate-100'}">${Math.round(r.temp)}°</strong>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-2.5 text-center shadow-inner">
+                <span class="text-slate-400 block mb-1">Viento</span>
+                <strong class="text-lg ${getWindRiskColor(r.wind)}">${Math.round(r.wind)}</strong>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-2.5 text-center shadow-inner">
+                <span class="text-slate-400 block mb-1">Ráfaga</span>
+                <strong class="text-lg ${getWindRiskColor(r.gust)}">${Math.round(r.gust)}</strong>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-2.5 text-center shadow-inner">
+                <span class="text-slate-400 block mb-1">CAPE</span>
+                <strong class="text-lg text-yellow-300">${Math.round(r.cape)}</strong>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-2.5 text-center shadow-inner">
+                <span class="text-slate-400 block mb-1">Nieve 24h</span>
+                <strong class="text-lg text-sky-200">${r.snow24h.toFixed(1)}</strong>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-2.5 text-center shadow-inner">
+                <span class="text-slate-400 block mb-1">Visibilidad</span>
+                <strong class="text-lg text-slate-100">${(r.visibility/1000).toFixed(1)}k</strong>
+            </div>
+            <div class="bg-slate-900/60 border border-slate-700/80 rounded-lg p-2.5 text-center shadow-inner">
+                <span class="text-slate-400 block mb-1">Iso 0°</span>
+                <strong class="text-lg text-indigo-300">${Math.round(r.freeze)}</strong>
+            </div>
+        </div>
+    `;
+    lucide.createIcons();
+}
+
+/* ============================================================
+   GRÁFICOS SVG
+============================================================ */
+
+function renderMeteogram(data, pointIndex) {
+    const svg = document.getElementById('meteogram-chart');
+    if (!svg) return;
+
+    const times = data.hourly.time.slice(0, 72);
+    const temps = data.hourly.temperature_2m.slice(0, 72);
+    const winds = data.hourly.wind_speed_10m.slice(0, 72).map(v => v * orographicWindFactor(expeditionRoute[pointIndex].elev));
+    const snows = data.hourly.snowfall.slice(0, 72);
+
+    const w = 1100, h = 260, pad = 35, padTop = 20;
+    const minT = Math.min(...temps.filter(Number.isFinite)) - 2;
+    const maxT = Math.max(...temps.filter(Number.isFinite)) + 2;
+    const maxW = Math.max(20, ...winds.filter(Number.isFinite)); // Ensure minimum scale
+    const maxS = Math.max(2, ...snows.filter(Number.isFinite));
+
+    const x = i => pad + i * ((w - pad * 2) / (times.length - 1));
+    const yT = v => h - pad - ((v - minT) / (maxT - minT)) * (h - pad - padTop);
+    const yW = v => h - pad - (v / maxW) * 80;
+    const yS = v => h - pad - (v / maxS) * 60;
+
+    const tempLine = temps.map((v, i) => `${x(i)},${yT(v)}`).join(' ');
+
+    const windBars = winds.map((v, i) => {
+        const bx = x(i) - 3.5;
+        const by = yW(v);
+        const bh = h - pad - by;
+        return `<rect x="${bx}" y="${by}" width="7" height="${bh}" fill="#38bdf8" opacity="0.4" rx="2"></rect>`;
+    }).join('');
+
+    const snowBars = snows.map((v, i) => {
+        if (!v) return '';
+        const bx = x(i) + 0; // Overlap slightly or put next to wind
+        const by = yS(v);
+        const bh = h - pad - by;
+        return `<rect x="${bx}" y="${by}" width="5" height="${bh}" fill="#e0f2fe" opacity="0.9" rx="1"></rect>`;
+    }).join('');
+
+    const labels = times.map((t, i) => {
+        if (i % 6 !== 0) return ''; // More frequent labels (every 6h)
+        const isDayChange = t.slice(11,13) === "00";
+        const fontWeight = isDayChange ? "bold" : "normal";
+        const fill = isDayChange ? "#e2e8f0" : "#94a3b8";
+        return `<text x="${x(i)}" y="${h - 10}" fill="${fill}" font-weight="${fontWeight}" font-size="11" font-family="Inter" text-anchor="middle">${isDayChange ? t.slice(8,10) + '/' + t.slice(5,7) : t.slice(11,13) + 'h'}</text>`;
+    }).join('');
+
+    // Grid lines
+    const gridLines = [0, 0.25, 0.5, 0.75, 1].map(pct => {
+        const y = padTop + pct * (h - pad - padTop);
+        return `<line x1="${pad}" y1="${y}" x2="${w-pad}" y2="${y}" stroke="#334155" stroke-dasharray="4,4" stroke-width="1"></line>`;
+    }).join('');
+
+    svg.innerHTML = `
+        <rect x="0" y="0" width="${w}" height="${h}" fill="transparent"></rect>
+        ${gridLines}
+        <line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="#64748b" stroke-width="1"></line>
+        ${windBars}
+        ${snowBars}
+        <polyline points="${tempLine}" fill="none" stroke="#fb7185" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0px 2px 4px rgba(251,113,133,0.3))"></polyline>
+        ${temps.map((v,i) => i % 3 === 0 ? `<circle cx="${x(i)}" cy="${yT(v)}" r="3" fill="#0f172a" stroke="#fb7185" stroke-width="2"></circle>` : '').join('')}
+        ${labels}
+    `;
+}
+
+function renderCloudChart(data) {
+    const svg = document.getElementById('cloud-chart');
+    if (!svg) return;
+
+    const n = 48; // Next 48 hours
+    const low = data.hourly.cloud_cover_low?.slice(0, n) || [];
+    const mid = data.hourly.cloud_cover_mid?.slice(0, n) || [];
+    const high = data.hourly.cloud_cover_high?.slice(0, n) || [];
+
+    const w = 600, h = 180, pad = 30;
+    const barW = (w - pad * 2) / n;
+
+    function bars(arr, yBase, color) {
+        return arr.map((v, i) => {
+            const height = (safeValue(v, 0) / 100) * 40;
+            return `<rect x="${pad + i * barW}" y="${yBase - height}" width="${Math.max(1, barW - 1.5)}" height="${height}" fill="${color}" opacity="0.85" rx="1"></rect>`;
+        }).join('');
+    }
+
+    // Time labels for X axis
+    const times = data.hourly.time.slice(0, n);
+    const labels = times.map((t, i) => {
+        if (i % 8 !== 0) return '';
+        return `<text x="${pad + i * barW + barW/2}" y="${h - 5}" fill="#64748b" font-size="10" font-family="Inter" text-anchor="middle">${t.slice(11,13)}h</text>`;
+    }).join('');
+
+    svg.innerHTML = `
+        <!-- Layer backgrounds -->
+        <rect x="${pad}" y="10" width="${w-pad*2}" height="45" fill="#1e293b" opacity="0.3" rx="4"></rect>
+        <rect x="${pad}" y="65" width="${w-pad*2}" height="45" fill="#1e293b" opacity="0.3" rx="4"></rect>
+        <rect x="${pad}" y="120" width="${w-pad*2}" height="45" fill="#1e293b" opacity="0.3" rx="4"></rect>
+
+        <text x="${pad-5}" y="35" fill="#a78bfa" font-size="11" font-weight="600" font-family="Inter" text-anchor="end">Alta</text>
+        <text x="${pad-5}" y="90" fill="#60a5fa" font-size="11" font-weight="600" font-family="Inter" text-anchor="end">Med</text>
+        <text x="${pad-5}" y="145" fill="#94a3b8" font-size="11" font-weight="600" font-family="Inter" text-anchor="end">Baja</text>
+        
+        ${bars(high, 55, '#a78bfa')}
+        ${bars(mid, 110, '#60a5fa')}
+        ${bars(low, 165, '#94a3b8')}
+        ${labels}
+    `;
+}
+
+/* ============================================================
+   PANELES EXTRA
+============================================================ */
+
+function renderPressureWinds(data, idx) {
+    const el = document.getElementById('pressure-winds');
+    if (!el) return;
+
+    const levels = [850, 700, 500];
+    const labels = { 850: '~1500m', 700: '~3000m', 500: '~5500m' };
+
+    el.innerHTML = levels.map(level => {
+        const ws = data.hourly[`wind_speed_${level}hPa`]?.[idx];
+        const wd = data.hourly[`wind_direction_${level}hPa`]?.[idx];
+        const tt = data.hourly[`temperature_${level}hPa`]?.[idx];
+
+        if (!Number.isFinite(ws)) {
+            return `<div class="bg-slate-800/50 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-500">${level} hPa (${labels[level]}): Sin datos</div>`;
+        }
+
+        return `
+            <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl px-4 py-3 flex justify-between items-center shadow-inner hover:bg-slate-800 transition-colors">
+                <div>
+                    <span class="font-bold text-slate-200 block">${level} hPa</span>
+                    <span class="text-[10px] text-slate-400 uppercase">${labels[level]}</span>
+                </div>
+                <div class="text-right flex items-center gap-3">
+                    <span class="text-cyan-300 font-bold text-lg">${Math.round(ws)} <span class="text-xs font-normal opacity-70">k/h</span></span>
+                    <div class="flex flex-col text-[11px] font-medium text-slate-400 items-end">
+                        <span class="flex items-center"><i data-lucide="navigation" class="w-3 h-3 mr-1" style="transform: rotate(${wd}deg)"></i> ${Math.round(wd || 0)}°</span>
+                        <span><i data-lucide="thermometer" class="w-3 h-3 inline mr-0.5"></i> ${Math.round(tt || 0)}°C</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    lucide.createIcons();
+}
+
+function renderInstability(data, idx) {
+    const el = document.getElementById('instability-panel');
+    if (!el) return;
+
+    const inst = computeInstability(data, idx);
+
+    if (!inst.available) {
+        el.innerHTML = `
+            <div class="bg-slate-800/50 border border-slate-700 rounded-lg p-4 text-slate-400 text-center text-sm flex flex-col items-center gap-2">
+                <i data-lucide="database-zap" class="w-6 h-6 opacity-50"></i>
+                Sin niveles de presión suficientes en el modelo actual para calcular índices KI / TT / LI.
+            </div>
+        `;
+        lucide.createIcons();
+        return;
+    }
+
+    const getRiskUi = (val, high, med, inv = false) => {
+        let condition = inv ? val < high : val > high;
+        let medCond = inv ? val < med : val > med;
+        if(condition) return '<span class="text-red-400 bg-red-900/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-red-500/30">Alto</span>';
+        if(medCond) return '<span class="text-yellow-400 bg-yellow-900/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-yellow-500/30">Medio</span>';
+        return '<span class="text-emerald-400 bg-emerald-900/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-500/30">Bajo</span>';
+    };
+
+    el.innerHTML = `
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 shadow-inner flex justify-between items-center">
+            <div>
+                <span class="font-bold text-slate-200 block">K-Index (KI)</span>
+                <span class="text-[10px] text-slate-400">Prob. Tormenta Masa</span>
+            </div>
+            <div class="text-right">
+                <span class="text-lg font-bold text-slate-100 mr-2">${inst.ki.toFixed(1)}</span>
+                ${getRiskUi(inst.ki, 30, 20)}
+            </div>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 shadow-inner flex justify-between items-center">
+            <div>
+                <span class="font-bold text-slate-200 block">Total-Totals (TT)</span>
+                <span class="text-[10px] text-slate-400">Severidad Tormenta</span>
+            </div>
+            <div class="text-right">
+                <span class="text-lg font-bold text-slate-100 mr-2">${inst.tt.toFixed(1)}</span>
+                ${getRiskUi(inst.tt, 50, 44)}
+            </div>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3.5 shadow-inner flex justify-between items-center">
+            <div>
+                <span class="font-bold text-slate-200 block">Lifted Index (LI)</span>
+                <span class="text-[10px] text-slate-400">Inestabilidad Parcelas</span>
+            </div>
+            <div class="text-right">
+                <span class="text-lg font-bold text-slate-100 mr-2">${inst.li.toFixed(1)}</span>
+                ${getRiskUi(inst.li, -4, 0, true)}
+            </div>
+        </div>
+    `;
+}
+
+function renderVisibilityPanel(data, idx) {
+    const el = document.getElementById('visibility-panel');
+    if (!el) return;
+
+    const vis = safeValue(data.hourly.visibility?.[idx], 0);
+    const cloud = safeValue(data.hourly.cloud_cover?.[idx], 0);
+    const low = safeValue(data.hourly.cloud_cover_low?.[idx], 0);
+    const mid = safeValue(data.hourly.cloud_cover_mid?.[idx], 0);
+    const high = safeValue(data.hourly.cloud_cover_high?.[idx], 0);
+    const rh = safeValue(data.hourly.relative_humidity_2m?.[idx], 0);
+    const dew = safeValue(data.hourly.dew_point_2m?.[idx], 0);
+
+    el.innerHTML = `
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 shadow-inner">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Visibilidad Horiz.</span>
+            <strong class="text-2xl text-slate-100">${(vis/1000).toFixed(1)} <span class="text-sm text-slate-400 font-medium">km</span></strong>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 shadow-inner">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Cubrimiento Total</span>
+            <strong class="text-2xl text-slate-100">${Math.round(cloud)}<span class="text-sm text-slate-400 font-medium">%</span></strong>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 shadow-inner">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Capas (B/M/A)</span>
+            <strong class="text-lg text-slate-200 mt-1 block">${Math.round(low)}<span class="text-slate-500 font-normal">%</span> / ${Math.round(mid)}<span class="text-slate-500 font-normal">%</span> / ${Math.round(high)}<span class="text-slate-500 font-normal">%</span></strong>
+        </div>
+        <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 shadow-inner">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Sat. Humedad</span>
+            <strong class="text-lg text-cyan-300 mt-1 block">${Math.round(rh)}% <span class="text-slate-500 font-normal mx-1">|</span> <span class="text-sm text-slate-400">Td: ${Math.round(dew)}°C</span></strong>
+        </div>
+    `;
+}
+
+function renderModelCompare() {
+    const tbody = document.getElementById('model-compare-table');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const summitIndex = expeditionRoute.findIndex(r => r.id === 'plo');
+
+    rawModelResponses.forEach(model => {
+        const p = model.data[summitIndex];
+        const idx = currentHourIndex(p);
+        const factor = orographicWindFactor(5424);
+        
+        const wind = (p.hourly.wind_speed_10m?.[idx] || 0) * factor;
+        const gust = (p.hourly.wind_gusts_10m?.[idx] || 0) * factor;
+        const temp = p.hourly.temperature_2m?.[idx];
+        const cape = p.hourly.cape?.[idx];
+        let snow24h = 0;
+
+        for (let i = idx; i < idx + 24 && i < p.hourly.time.length; i++) {
+            snow24h += safeValue(p.hourly.snowfall?.[i], 0);
+        }
+
+        const note = wind > 40 || gust > 60 ? '<span class="text-red-400 font-bold">Ventoso</span>' : '<span class="text-emerald-400 font-medium">Estable</span>';
+
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr class="hover:bg-slate-800/40 transition-colors">
+                <td class="py-3 px-3 font-bold text-indigo-300">${model.config.label} <span class="text-[10px] text-slate-500 font-normal ml-1 border border-slate-700 px-1 rounded">w: ${(model.config.weight*100).toFixed(0)}%</span></td>
+                <td class="py-3 px-3 text-center font-medium ${temp < -20 ? 'text-sky-300' : 'text-slate-200'}">${Math.round(temp || 0)}°</td>
+                <td class="py-3 px-3 text-center font-bold ${getWindRiskColor(wind)}">${Math.round(wind)} <span class="text-xs font-normal opacity-70">km/h</span></td>
+                <td class="py-3 px-3 text-center font-bold ${getWindRiskColor(gust)}">${Math.round(gust)} <span class="text-xs font-normal opacity-70">km/h</span></td>
+                <td class="py-3 px-3 text-center font-medium text-yellow-300">${Math.round(cape || 0)}</td>
+                <td class="py-3 px-3 text-center font-medium text-sky-200">${snow24h.toFixed(1)} cm</td>
+                <td class="py-3 px-3 text-right text-slate-300">${note}</td>
+            </tr>
+        `);
+    });
+}
+
+function renderDrift(previousSnapshot) {
+    const el = document.getElementById('drift-panel');
+    if (!el) return;
+
+    if (!previousSnapshot) {
+        el.innerHTML = `
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6 text-center">
+                <i data-lucide="history" class="w-8 h-8 text-slate-500 mx-auto mb-3"></i>
+                <p class="text-slate-400 font-medium text-sm">Sin snapshot anterior disponible.</p>
+                <p class="text-xs text-slate-500 mt-1">La próxima vez que actualices se calculará el Drift local (cambio en el pronóstico).</p>
+            </div>
+        `;
+        lucide.createIcons();
+        return;
+    }
+
+    try {
+        const prev = JSON.parse(previousSnapshot);
+        const summitIndex = expeditionRoute.findIndex(r => r.id === 'plo');
+        const d = weatherData[summitIndex];
+        const idx = currentHourIndex(d);
+        const nowRisk = computeMountainRisk(d, idx, 5424, summitIndex);
+
+        const dw = nowRisk.wind - prev.wind;
+        const dg = nowRisk.gust - prev.gust;
+        const dm = nowRisk.ml - prev.ml;
+        
+        const formatDiff = (val, dec=1) => val > 0 ? `<span class="text-red-400 font-bold">+${val.toFixed(dec)}</span>` : val < 0 ? `<span class="text-emerald-400 font-bold">${val.toFixed(dec)}</span>` : `<span class="text-slate-400 font-medium">0.0</span>`;
+
+        el.innerHTML = `
+            <div class="bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-3 mb-3 text-[11px] font-medium text-indigo-200 flex items-center justify-center">
+                <i data-lucide="save" class="w-3.5 h-3.5 mr-1.5 opacity-70"></i>
+                Snapshot base guardado el: ${new Date(prev.savedAt).toLocaleString('es-CL')}
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 shadow-inner text-center">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Δ Viento</span>
+                    <strong class="text-2xl">${formatDiff(dw)}<span class="text-sm font-normal text-slate-500 ml-1">k/h</span></strong>
+                </div>
+                <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 shadow-inner text-center">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Δ Ráfaga</span>
+                    <strong class="text-2xl">${formatDiff(dg)}<span class="text-sm font-normal text-slate-500 ml-1">k/h</span></strong>
+                </div>
+                <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 shadow-inner text-center">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-1">Δ Abortar (ML)</span>
+                    <strong class="text-2xl">${formatDiff(dm * 100, 0)}<span class="text-sm font-normal text-slate-500 ml-1">%</span></strong>
+                </div>
+            </div>
+        `;
+        lucide.createIcons();
+    } catch (e) {
+        el.innerHTML = '<div class="text-red-400 p-4 border border-red-500/30 bg-red-900/20 rounded-xl text-sm">No se pudo leer drift previo. Error de parseo.</div>';
+    }
+}
+
+/* ============================================================
+   MAPA / PERFIL
+============================================================ */
+
+function renderMap() {
+    if (!window.L || weatherData.length === 0) return;
+
+    const coords = fullRouteTrack.length ? fullRouteTrack : expeditionRoute.map(p => [p.lat, p.lon]);
+
+    if (!mapInstance) {
+        mapInstance = L.map('map', {
+            zoomControl: true,
+            scrollWheelZoom: false,
+            preferCanvas: true
+        }).setView([-33.282, -70.231], 11);
+
+        // Dark mode tile layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 18
+        }).addTo(mapInstance);
+    }
+
+    if (fullTrackLayer) mapInstance.removeLayer(fullTrackLayer);
+    if (routeLayer) mapInstance.removeLayer(routeLayer);
+    if (markerLayer) mapInstance.removeLayer(markerLayer);
+
+    fullTrackLayer = L.polyline(coords, {
+        color: '#38bdf8',
+        weight: 3,
+        opacity: 0.8
+    }).addTo(mapInstance);
+
+    routeLayer = L.polyline(expeditionRoute.map(p => [p.lat, p.lon]), {
+        color: '#f59e0b',
+        weight: 2,
+        opacity: 0.4,
+        dashArray: '6,8'
+    }).addTo(mapInstance);
+
+    markerLayer = L.layerGroup();
+
+    expeditionRoute.forEach((p, i) => {
+        const data = weatherData[i];
+        const idx = currentHourIndex(data);
+        const r = computeMountainRisk(data, idx, p.elev, i);
+        const badge = getRiskBadge(r.level);
+
+        const marker = L.circleMarker([p.lat, p.lon], {
+            radius: p.id === selectedNodeId ? 10 : 7,
+            color: p.id === selectedNodeId ? '#fff' : '#94a3b8',
+            weight: p.id === selectedNodeId ? 3 : 2,
+            fillColor: badge.dot,
+            fillOpacity: 0.95
+        }).bindPopup(`
+            <div class="text-center pb-1 border-b border-slate-600 mb-2">
+                <strong class="text-white text-base">${p.name}</strong><br>
+                <span class="text-xs text-indigo-300 font-medium">${p.elev} msnm</span>
+            </div>
+            <div class="text-sm space-y-1">
+                <div>Riesgo: <strong class="${badge.color}">${r.level}</strong></div>
+                <div>Temp: <strong class="text-slate-100">${Math.round(r.temp)}°C</strong></div>
+                <div>Viento/Ráf: <strong class="text-slate-100">${Math.round(r.wind)} / ${Math.round(r.gust)} km/h</strong></div>
+                <div class="text-xs text-slate-400 mt-1 pt-1 border-t border-slate-700">Haz clic en el nodo para seleccionarlo en el panel</div>
+            </div>
+        `);
+
+        marker.on('click', () => selectNode(p.id));
+        markerLayer.addLayer(marker);
+    });
+
+    markerLayer.addTo(mapInstance);
+    forceMapResize(180);
+}
+
+function forceMapResize(delay = 250) {
+    setTimeout(() => {
+        if (!mapInstance) return;
+        mapInstance.invalidateSize(true);
+
+        try {
+            const layer = fullTrackLayer || routeLayer;
+            if (layer && layer.getBounds().isValid()) {
+                mapInstance.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 13 });
+            }
+        } catch (e) {
+            console.warn('No se pudo ajustar el mapa:', e);
+        }
+    }, delay);
+}
+
+function centerFullRoute() {
+    forceMapResize(100);
+}
+
+window.addEventListener('resize', () => forceMapResize(150));
+
+function renderAltitudeProfile() {
+    const svg = document.getElementById('alt-profile');
+    if (!svg || weatherData.length === 0) return;
+
+    const w = 700, h = 240, padX = 40, padY = 35;
+    const elevs = expeditionRoute.map(p => p.elev);
+    const minE = Math.min(...elevs) - 200;
+    const maxE = Math.max(...elevs) + 200;
+
+    const points = expeditionRoute.map((p, i) => {
+        const x = padX + i * ((w - padX * 2) / (expeditionRoute.length - 1));
+        const y = h - padY - ((p.elev - minE) / (maxE - minE)) * (h - padY * 2);
+        return { x, y, p };
+    });
+
+    const line = points.map(pt => `${pt.x},${pt.y}`).join(' ');
+    const area = `${padX},${h - padY} ${line} ${w - padX},${h - padY}`;
+
+    svg.innerHTML = `
+        <defs>
+            <linearGradient id="profileFill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.3"/>
+                <stop offset="100%" stop-color="#0f172a" stop-opacity="0.05"/>
+            </linearGradient>
+            <filter id="glow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+        
+        <!-- Y-Axis Lines -->
+        <line x1="${padX}" y1="${h-padY}" x2="${w-padX}" y2="${h-padY}" stroke="#334155" stroke-dasharray="4,4" stroke-width="1"></line>
+        <line x1="${padX}" y1="${padY}" x2="${w-padX}" y2="${padY}" stroke="#334155" stroke-dasharray="4,4" stroke-width="1"></line>
+
+        <polyline points="${area}" fill="url(#profileFill)" stroke="none"></polyline>
+        <polyline points="${line}" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"></polyline>
+        
+        ${points.map(pt => {
+            const isActive = pt.p.id === selectedNodeId;
+            const dataIndex = expeditionRoute.findIndex(r => r.id === pt.p.id);
+            const data = weatherData[dataIndex];
+            const idx = currentHourIndex(data);
+            const r = computeMountainRisk(data, idx, pt.p.elev, dataIndex);
+            const badge = getRiskBadge(r.level);
+            return `
+                <circle cx="${pt.x}" cy="${pt.y}" r="${isActive ? 8 : 6}" fill="${badge.dot}" stroke="${isActive ? '#fff' : '#64748b'}" stroke-width="${isActive ? 3 : 2}" cursor="pointer" onclick="selectNode('${pt.p.id}')"></circle>
+                <text x="${pt.x}" y="${pt.y - 15}" fill="${isActive ? '#fff' : '#cbd5e1'}" font-weight="${isActive ? 'bold' : 'normal'}" font-family="Inter" font-size="12" text-anchor="middle" cursor="pointer" onclick="selectNode('${pt.p.id}')">${pt.p.name.split(' ')[0]}</text>
+                <text x="${pt.x}" y="${h - 10}" fill="#94a3b8" font-family="Inter" font-size="11" font-weight="500" text-anchor="middle">${pt.p.elev}m</text>
+            `;
+        }).join('')}
+    `;
+}
+
+/* ============================================================
+   INCERTIDUMBRE / RIESGO GLOBAL / ALERTAS
+============================================================ */
+
+function renderUncertaintyPanel() {
+    const panel = document.getElementById('uncertainty-panel');
+    panel.innerHTML = '';
+
+    const summitIndex = expeditionRoute.findIndex(r => r.id === 'plo');
+    const data = weatherData[summitIndex];
+    const idx = currentHourIndex(data);
+    const r = computeMountainRisk(data, idx, 5424, summitIndex);
+
+    let confText = 'Alta';
+    let confColor = 'text-emerald-400 bg-emerald-900/20 border border-emerald-500/30 px-2 py-0.5 rounded';
+
+    if (r.spreadWind > 14 || r.spreadGust > 20) {
+        confText = 'Baja';
+        confColor = 'text-red-400 bg-red-900/20 border border-red-500/30 px-2 py-0.5 rounded';
+    } else if (r.spreadWind > 8 || r.spreadGust > 12) {
+        confText = 'Media';
+        confColor = 'text-yellow-400 bg-yellow-900/20 border border-yellow-500/30 px-2 py-0.5 rounded';
+    }
+
+    const modelRows = rawModelResponses.map(model => {
+        const p = model.data[summitIndex];
+        const idxM = currentHourIndex(p);
+        const w = (p.hourly.wind_speed_10m?.[idxM] || 0) * r.factor;
+        const g = (p.hourly.wind_gusts_10m?.[idxM] || 0) * r.factor;
+        const t = p.hourly.temperature_2m?.[idxM];
+
+        return `
+            <div class="flex justify-between items-center bg-slate-800/50 border border-slate-700/80 rounded-lg px-3 py-2.5 hover:bg-slate-800 transition-colors">
+                <span class="text-slate-200 font-medium">${model.config.label}</span>
+                <span class="text-[11px] font-bold text-slate-400 bg-slate-900/50 px-2 py-1 rounded">T ${Math.round(t || 0)}° · V ${Math.round(w)} · R ${Math.round(g)}</span>
+            </div>
+        `;
+    }).join('');
+
+    panel.innerHTML = `
+        <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 shadow-inner mb-3">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-sm font-semibold text-slate-300">Confianza Conjunta</span>
+                <span class="${confColor} text-xs font-bold uppercase tracking-wider">${confText}</span>
+            </div>
+            <div class="text-[11px] text-slate-400 mt-2 font-medium flex gap-3 border-t border-slate-700/50 pt-2">
+                <span>Spread Viento: <strong class="text-cyan-300">±${r.spreadWind.toFixed(1)}</strong> k/h</span>
+                <span>Spread Ráfaga: <strong class="text-orange-300">±${r.spreadGust.toFixed(1)}</strong> k/h</span>
+            </div>
+        </div>
+        <div class="space-y-2">
+            ${modelRows}
+        </div>
+    `;
+}
+
+function renderGlobalRouteRisk() {
+    let totalScore = 0;
+    let totalMl = 0;
+
+    expeditionRoute.forEach((p, i) => {
+        const data = weatherData[i];
+        const idx = currentHourIndex(data);
+        const r = computeMountainRisk(data, idx, p.elev, i);
+        totalScore += r.score;
+        totalMl += r.ml;
+    });
+
+    const avgScore = totalScore / expeditionRoute.length;
+    const avgMl = totalMl / expeditionRoute.length;
+
+    let text = 'Ventana global';
+    let cls = 'text-emerald-400 border-emerald-500/40 bg-emerald-900/20';
+    let icon = 'check-circle';
+
+    if (avgScore > 6 || avgMl > 0.65) {
+        text = 'Ruta no recomendable';
+        cls = 'text-red-400 border-red-500/40 bg-red-900/20';
+        icon = 'alert-octagon';
+    } else if (avgScore > 3.5 || avgMl > 0.38) {
+        text = 'Ruta marginal';
+        cls = 'text-yellow-400 border-yellow-500/40 bg-yellow-900/20';
+        icon = 'alert-triangle';
+    }
+
+    const el = document.getElementById('global-risk-badge');
+    el.className = `text-xs font-bold uppercase tracking-wide border px-3 py-2 rounded-lg ${cls} flex items-center justify-center`;
+    el.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 mr-1.5"></i> Riesgo: ${text} <span class="ml-2 font-normal opacity-80">(ML ${Math.round(avgMl * 100)}%)</span>`;
+}
+
+function checkAlerts() {
+    const el = document.getElementById('alerts-panel');
+    if (!el) return;
+
+    const best = detectBestSummitAttackWindow();
+    const alerts = [];
+
+    if (!best) {
+        alerts.push({ level: 'red', text: 'Sin ventana de ataque recomendable para los próximos días.' });
+    } else if (!best.strict) {
+        alerts.push({ level: 'yellow', text: 'Solo existe alternativa marginal; revisar viento, spread y visibilidad.' });
+    } else {
+        alerts.push({ level: 'green', text: `Ventana óptima detectada: ${formatDisplayDate(best.time.split('T')[0], false)} a las ${best.time.split('T')[1].slice(0,5)}` });
+    }
+
+    const summitIndex = expeditionRoute.findIndex(r => r.id === 'plo');
+    const data = weatherData[summitIndex];
+    const idx = currentHourIndex(data);
+    const r = computeMountainRisk(data, idx, 5424, summitIndex);
+
+    if (r.gust > 70) alerts.push({ level: 'red', text: `Ráfaga corregida alta en cumbre: ${Math.round(r.gust)} km/h.` });
+    if (r.cape > 300) alerts.push({ level: 'yellow', text: `CAPE elevado: ${Math.round(r.cape)} J/kg. Riesgo eléctrico.` });
+    if (r.visibility < 3000) alerts.push({ level: 'yellow', text: `Visibilidad reducida en cumbre: ${(r.visibility/1000).toFixed(1)} km.` });
+
+    el.innerHTML = alerts.map(a => {
+        const cls = a.level === 'red' ? 'border-red-500/40 text-red-300 bg-red-900/20' :
+                    a.level === 'yellow' ? 'border-yellow-500/40 text-yellow-300 bg-yellow-900/20' :
+                    'border-emerald-500/40 text-emerald-300 bg-emerald-900/20';
+        const icon = a.level === 'red' ? 'alert-circle' : a.level === 'yellow' ? 'alert-triangle' : 'check-circle';
+        
+        return `<div class="border rounded-lg p-3 text-sm font-medium ${cls} flex items-start"><i data-lucide="${icon}" class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0"></i> <span>${a.text}</span></div>`;
+    }).join('');
+
+    maybeSendWebhook(alerts);
+    lucide.createIcons();
+}
+
+function saveWebhook() {
+    const url = document.getElementById('webhook-url').value.trim();
+    localStorage.setItem('meteoplomo_webhook_url', url);
+    showToast('URL de Webhook guardada exitosamente.', "success");
+}
+
+async function maybeSendWebhook(alerts) {
+    const url = localStorage.getItem('meteoplomo_webhook_url');
+    if (!url || !url.startsWith('http')) return;
+
+    const key = 'meteoplomo_last_webhook';
+    const last = localStorage.getItem(key);
+    const nowHour = new Date().toISOString().slice(0, 13);
+    if (last === nowHour) return; // Only send once per hour
+
+    try {
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                app: 'MeteoPlomo V5.1 PRO',
+                time: new Date().toISOString(),
+                alerts
+            })
+        });
+        localStorage.setItem(key, nowHour);
+        console.log("Webhook enviado exitosamente.");
+    } catch (e) {
+        console.warn('Webhook falló:', e);
+    }
+}
+
+/* ============================================================
+   EXPORT / PWA BÁSICO
+============================================================ */
+
+function exportAttackReport() {
+    const best = detectBestSummitAttackWindow();
+    const report = document.getElementById('print-report');
+
+    if (!best) {
+        report.innerHTML = '<h1>MeteoPlomo V5.1 PRO</h1><p>Alerta: Sin ventana recomendable para cumbre identificada por el algoritmo.</p>';
+    } else {
+        const r = best.risk;
+        report.innerHTML = `
+            <div style="font-family: sans-serif; max-width: 800px; margin: 0 auto; color: #111;">
+                <h1 style="border-bottom: 2px solid #000; padding-bottom: 10px;">MeteoPlomo V5.1 PRO · Informe de Ataque a Cumbre</h1>
+                <p><strong>Fecha Generación:</strong> ${new Date().toLocaleString('es-CL')}</p>
+                <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h2>Ventana Recomendada</h2>
+                    <p style="font-size: 1.2em;"><strong>${formatDisplayDate(best.time.split('T')[0], false)} a las ${best.time.split('T')[1].slice(0,5)}</strong></p>
+                    <p><strong>Tipo de Ventana:</strong> ${best.strict ? 'Óptima estricta' : 'Alternativa marginal'}</p>
+                </div>
+                
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                    <tr style="background: #e2e8f0;">
+                        <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Parámetro</th>
+                        <th style="padding: 10px; border: 1px solid #ccc; text-align: left;">Valor Esperado</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ccc;">Temperatura (Cumbre)</td>
+                        <td style="padding: 10px; border: 1px solid #ccc;">${Math.round(r.temp)} °C</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ccc;">Viento (Orográfico)</td>
+                        <td style="padding: 10px; border: 1px solid #ccc;">${Math.round(r.wind)} km/h</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ccc;">Ráfagas Máximas</td>
+                        <td style="padding: 10px; border: 1px solid #ccc;">${Math.round(r.gust)} km/h</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ccc;">Índice CAPE</td>
+                        <td style="padding: 10px; border: 1px solid #ccc;">${Math.round(r.cape)} J/kg</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ccc;">Nieve 24h Previas</td>
+                        <td style="padding: 10px; border: 1px solid #ccc;">${r.snow24h.toFixed(1)} cm</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ccc;">Incertidumbre (Spread Viento)</td>
+                        <td style="padding: 10px; border: 1px solid #ccc;">±${r.spreadWind.toFixed(1)} km/h</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ccc;">Probabilidad Abortar (ML)</td>
+                        <td style="padding: 10px; border: 1px solid #ccc;">${Math.round(r.ml * 100)}%</td>
+                    </tr>
+                </table>
+                
+                <h3>Notas de Riesgo</h3>
+                <p>${r.reasons.join(', ') || 'El modelo no arroja penalizaciones críticas para esta ventana horaria.'}</p>
+                <p style="font-size: 0.8em; color: #555; margin-top: 40px;">* Este reporte es generado automáticamente a partir de un ensemble de modelos meteorológicos. Evalúe siempre la condición en el terreno.</p>
+            </div>
+        `;
+    }
+
+    // Small delay to allow render before print triggers
+    setTimeout(() => {
+        window.print();
+        showToast("Iniciando impresión de reporte...", "info");
+    }, 100);
+}
+
+function registerPWAOfflineMode() {
+    if (!('serviceWorker' in navigator)) return;
+
+    const swCode = `
+        const CACHE = 'meteoplomo-v51-cache';
+        self.addEventListener('install', e => {
+            e.waitUntil(caches.open(CACHE).then(c => c.addAll([])));
+            self.skipWaiting();
+        });
+        self.addEventListener('fetch', e => {
+            e.respondWith(
+                fetch(e.request).catch(() => caches.match(e.request))
+            );
+        });
+    `;
+
+    try {
+        const blob = new Blob([swCode], { type: 'text/javascript' });
+        const swUrl = URL.createObjectURL(blob);
+        navigator.serviceWorker.register(swUrl).then(() => {
+            console.log("Service Worker registrado para modo offline (PWA).");
+        }).catch(console.warn);
+    } catch(e) {
+        console.warn("No se pudo registrar SW en este entorno:", e);
+    }
+}
+
+/* ============================================================
+   INICIO Y EVENTOS
+============================================================ */
+
+window.addEventListener('DOMContentLoaded', () => {
+    const webhook = localStorage.getItem('meteoplomo_webhook_url');
+    if (webhook) {
+        const input = document.getElementById('webhook-url');
+        if (input) input.value = webhook;
+    }
+
+    registerPWAOfflineMode();
+    loadExpeditionData();
+});
+</script>
+
+</body>
+</html>
